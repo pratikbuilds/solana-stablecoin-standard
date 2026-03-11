@@ -1,0 +1,24 @@
+[toolchain]
+package_manager = "yarn"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+stablecoin = "78YRTUZwe3Rx56tFV77MiQVrrMTLtkYDSLAPEAdYRWyf"
+transfer_hook = "FETyQwfXmjCDh2UZTDTSrsu5XZJuT6abE39ox7st6sBn"
+
+[provider]
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+build = "./scripts/build.sh"
+
+[workspace]
+members = [
+  "programs/stablecoin",
+  "programs/transfer-hook",
+]
+

@@ -1,0 +1,23 @@
+{
+  "name": "solana-stablecoin-standard",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "yarn@1.22.22",
+  "workspaces": [
+    "sdk/generated",
+    "sdk/client",
+    "sdk/cli"
+  ],
+  "scripts": {
+    "bootstrap": "yarn install",
+    "build": "./scripts/build.sh",
+    "build:ts": "tsc -b sdk/generated sdk/client sdk/cli",
+    "build:rust": "cargo check --workspace",
+    "build:anchor": "anchor build",
+    "verify": "./scripts/check.sh"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.3"
+  }
+}
