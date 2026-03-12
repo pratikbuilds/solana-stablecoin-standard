@@ -1,0 +1,13 @@
+{
+  "name": "@stbr/sss-generated-web3js",
+  "version": "0.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@solana/web3.js": "^1.98.4"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

@@ -4,14 +4,16 @@
   "version": "0.1.0",
   "packageManager": "yarn@1.22.22",
   "workspaces": [
-    "sdk/generated",
+    "sdk/generated-kit",
+    "sdk/generated-web3js",
     "sdk/client",
     "sdk/cli"
   ],
   "scripts": {
     "bootstrap": "yarn install",
+    "generate": "node scripts/generate-sdks.mjs && node scripts/patch-generated.mjs",
     "build": "./scripts/build.sh",
-    "build:ts": "tsc -b sdk/generated sdk/client sdk/cli",
+    "build:ts": "tsc -b sdk/generated-kit sdk/generated-web3js sdk/client sdk/cli",
     "build:rust": "cargo check --workspace",
     "build:anchor": "anchor build",
     "verify": "./scripts/check.sh",
@@ -20,7 +22,13 @@
     "test:devnet:stress": "mocha --require tsx/cjs --file tests/devnet/mocha.setup.ts \"tests/devnet/stress.spec.ts\""
   },
   "devDependencies": {
+    "@stbr/sss-client": "0.0.0",
+    "@codama/nodes-from-anchor": "^1.3.9",
+    "@codama/renderers-js": "^2.0.3",
     "@coral-xyz/anchor": "^0.32.1",
+    "@pratikbuilds/web3js-legacy": "^0.1.2",
+    "codama": "^1.4.4",
+    "@solana/kit": "^2.0.0",
     "@solana/spl-token": "^0.4.14",
     "@solana/web3.js": "^1.98.4",
     "@types/mocha": "^10.0.10",
