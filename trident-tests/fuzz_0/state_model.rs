@@ -1,4 +1,4 @@
-use anchor_lang::{AccountDeserialize, InstructionData, ToAccountMetas};
+use anchor_lang::{solana_program::instruction::AccountMeta, AccountDeserialize, InstructionData, ToAccountMetas};
 use stablecoin::instructions::initialize::InitializeParams;
 use stablecoin::instructions::roles::UpdateMinterParams;
 use stablecoin::state::{BlacklistEntry, MinterQuota, RoleConfig, StablecoinConfig};
@@ -478,6 +478,40 @@ pub fn seize_ix_with_amount(
         accounts: accounts.to_account_metas(None),
         data: stablecoin::instruction::Seize { amount }.data(),
     }
+}
+
+pub fn transfer_checked_with_hook_ix(
+    source: Pubkey,
+    mint: Pubkey,
+    destination: Pubkey,
+    authority: Pubkey,
+    source_owner: Pubkey,
+    destination_owner: Pubkey,
+    amount: u64,
+    decimals: u8,
+) -> Instruction {
+    let mut ix = spl_token_2022::instruction::transfer_checked(
+        &spl_token_2022::id(),
+        &source,
+        &mint,
+        &destination,
+        &authority,
+        &[],
+        amount,
+        decimals,
+    )
+    .expect("transfer_checked instruction");
+
+    ix.accounts.extend([
+        AccountMeta::new_readonly(stablecoin::ID, false),
+        AccountMeta::new_readonly(config_pda(&mint), false),
+        AccountMeta::new_readonly(blacklist_pda(&mint, &source_owner), false),
+        AccountMeta::new_readonly(blacklist_pda(&mint, &destination_owner), false),
+        AccountMeta::new_readonly(extra_account_meta_list_pda(&mint), false),
+        AccountMeta::new_readonly(transfer_hook::ID, false),
+    ]);
+
+    ix
 }
 
 fn deserialize_anchor_account<T: AccountDeserialize>(

@@ -2,6 +2,7 @@ use anchor_lang::error::ERROR_CODE_OFFSET;
 use fuzz_accounts::*;
 use invariants::{assert_global_invariants, assert_snapshot_unchanged, ScenarioSnapshot};
 use stablecoin::errors::StablecoinError;
+use transfer_hook::TransferHookError;
 use trident_fuzz::fuzzing::*;
 mod fuzz_accounts;
 mod invariants;
@@ -9,7 +10,8 @@ mod state_model;
 mod types;
 use state_model::{
     add_to_blacklist_ix, burn_ix, freeze_account_ix, mint_ix, pause_ix, remove_from_blacklist_ix,
-    seize_ix_with_amount, thaw_account_ix, unpause_ix, update_minter_ix, ScenarioState, TokenSlot,
+    seize_ix_with_amount, thaw_account_ix, transfer_checked_with_hook_ix, unpause_ix,
+    update_minter_ix, ScenarioState, TokenSlot,
 };
 
 macro_rules! process_ix {
@@ -53,19 +55,24 @@ impl FuzzTest {
     #[init]
     fn start(&mut self) {
         let mut scenario = ScenarioState::initialize(&mut self.trident);
+        Self::debug_log(format!(
+            "initialized preset={:?} mint={} authority={} minter={}",
+            scenario.preset, scenario.mint, scenario.authority, scenario.minter
+        ));
         assert_global_invariants(&mut self.trident, &mut scenario);
         self.scenario = Some(scenario);
     }
 
     #[flow]
     fn lifecycle_flow(&mut self) {
-        match self.trident.random_from_range(0..6) {
+        match self.trident.random_from_range(0..7) {
             0 => self.lifecycle_update_minter(),
             1 => self.lifecycle_mint(),
             2 => self.lifecycle_pause_toggle(),
             3 => self.lifecycle_freeze_toggle(),
             4 => self.lifecycle_burn(),
-            _ => self.lifecycle_blacklist_or_seize(),
+            5 => self.lifecycle_blacklist_or_seize(),
+            _ => self.lifecycle_transfer_hook(),
         }
 
         let scenario = self.scenario.as_mut().expect("scenario initialized");
@@ -74,14 +81,15 @@ impl FuzzTest {
 
     #[flow]
     fn negative_flow(&mut self) {
-        match self.trident.random_from_range(0..7) {
+        match self.trident.random_from_range(0..8) {
             0 => self.negative_unauthorized_pause(),
             1 => self.negative_unauthorized_update_minter(),
             2 => self.negative_mint_while_paused(),
             3 => self.negative_burn_while_paused(),
             4 => self.negative_zero_amount_mint(),
             5 => self.negative_blacklist_or_seize(),
-            _ => self.negative_invalid_treasury_seize(),
+            6 => self.negative_invalid_treasury_seize(),
+            _ => self.negative_transfer_hook_blacklist(),
         }
 
         let scenario = self.scenario.as_mut().expect("scenario initialized");
@@ -91,6 +99,10 @@ impl FuzzTest {
     #[end]
     fn end(&mut self) {
         if let Some(mut scenario) = self.scenario.take() {
+            Self::debug_log(format!(
+                "completed preset={:?} total_minted={} total_burned={}",
+                scenario.preset, scenario.last_total_minted, scenario.last_total_burned
+            ));
             assert_global_invariants(&mut self.trident, &mut scenario);
         }
     }
@@ -101,11 +113,22 @@ fn main() {
 }
 
 impl FuzzTest {
+    fn debug_enabled() -> bool {
+        std::env::var("TRIDENT_FUZZ_DEBUG").is_ok()
+    }
+
+    fn debug_log(message: impl AsRef<str>) {
+        if Self::debug_enabled() {
+            println!("[fuzz_0] {}", message.as_ref());
+        }
+    }
+
     fn scenario(&self) -> ScenarioState {
         *self.scenario.as_ref().expect("scenario initialized")
     }
 
     fn lifecycle_update_minter(&mut self) {
+        Self::debug_log("flow=lifecycle_update_minter");
         let scenario = self.scenario();
         let quota = self.trident.random_from_range(1_000_u64..25_000_u64);
         let active = self.trident.random_bool();
@@ -134,6 +157,7 @@ impl FuzzTest {
     }
 
     fn lifecycle_mint(&mut self) {
+        Self::debug_log("flow=lifecycle_mint");
         let scenario = self.scenario();
         if scenario.config(&mut self.trident).paused {
             let unpause = process_ix!(
@@ -396,6 +420,7 @@ impl FuzzTest {
     }
 
     fn lifecycle_blacklist_or_seize(&mut self) {
+        Self::debug_log("flow=lifecycle_blacklist_or_seize");
         let scenario = self.scenario();
         if scenario.preset == state_model::PresetKind::Sss1 {
             self.lifecycle_freeze_toggle();
@@ -444,6 +469,7 @@ impl FuzzTest {
     }
 
     fn lifecycle_seize(&mut self) {
+        Self::debug_log("flow=lifecycle_seize");
         let scenario = self.scenario();
         if scenario.config(&mut self.trident).paused {
             let unpause = process_ix!(
@@ -548,7 +574,122 @@ impl FuzzTest {
         assert_eq!(after.supply, before.supply, "seize should preserve supply");
     }
 
+    fn lifecycle_transfer_hook(&mut self) {
+        Self::debug_log("flow=lifecycle_transfer_hook");
+        let scenario = self.scenario();
+        if scenario.preset == state_model::PresetKind::Sss1 {
+            self.lifecycle_mint();
+            return;
+        }
+        if scenario.config(&mut self.trident).paused {
+            let unpause = process_ix!(
+                &mut self.trident,
+                unpause_ix(scenario.authority, scenario.mint),
+                "UnpauseBeforeTransferHook"
+            );
+            assert!(
+                unpause.is_success(),
+                "unpause before transfer should succeed: {}",
+                unpause.logs()
+            );
+        }
+
+        for (slot, wallet, account, label) in [
+            (TokenSlot::UserA, scenario.user_a, scenario.user_a_account, "PrepareTransferSource"),
+            (
+                TokenSlot::UserB,
+                scenario.user_b,
+                scenario.user_b_account,
+                "PrepareTransferDestination",
+            ),
+        ] {
+            if scenario.blacklist_entry(&mut self.trident, wallet).is_some() {
+                let remove = process_ix!(
+                    &mut self.trident,
+                    remove_from_blacklist_ix(scenario.authority, scenario.mint, wallet),
+                    label
+                );
+                assert!(
+                    remove.is_success(),
+                    "remove blacklist for {label} should succeed: {}",
+                    remove.logs()
+                );
+            }
+            if scenario.token_is_frozen(&mut self.trident, slot) {
+                let thaw = process_ix!(
+                    &mut self.trident,
+                    thaw_account_ix(scenario.authority, scenario.mint, account),
+                    label
+                );
+                assert!(
+                    thaw.is_success(),
+                    "thaw for {label} should succeed: {}",
+                    thaw.logs()
+                );
+            }
+        }
+
+        if scenario.token_amount(&mut self.trident, TokenSlot::UserA) == 0 {
+            let refill = process_ix!(
+                &mut self.trident,
+                mint_ix(scenario.authority, scenario.mint, scenario.user_a_account, 100),
+                "RefillTransferSource"
+            );
+            assert!(
+                refill.is_success(),
+                "refill before transfer should succeed: {}",
+                refill.logs()
+            );
+        }
+
+        let before = ScenarioSnapshot::capture(&mut self.trident, &scenario);
+        let amount = self
+            .trident
+            .random_from_range(1_u64..=before.user_a_balance.max(1).min(250));
+        let result = process_ix!(
+            &mut self.trident,
+            transfer_checked_with_hook_ix(
+                scenario.user_a_account,
+                scenario.mint,
+                scenario.user_b_account,
+                scenario.user_a,
+                scenario.user_a,
+                scenario.user_b,
+                amount,
+                6,
+            ),
+            "TransferHook"
+        );
+        assert!(
+            result.is_success(),
+            "transfer hook should succeed: {}",
+            result.logs()
+        );
+
+        let after = ScenarioSnapshot::capture(&mut self.trident, &scenario);
+        assert_eq!(
+            after.user_a_balance,
+            before.user_a_balance - amount,
+            "source balance should decrease"
+        );
+        assert_eq!(
+            after.user_b_balance,
+            before.user_b_balance + amount,
+            "destination balance should increase"
+        );
+        assert_eq!(after.supply, before.supply, "transfer should preserve supply");
+        assert_eq!(
+            after.total_minted, before.total_minted,
+            "transfer should not change minted counter"
+        );
+        assert_eq!(
+            after.total_burned, before.total_burned,
+            "transfer should not change burned counter"
+        );
+    }
+
     fn negative_unauthorized_pause(&mut self) {
+        Self::debug_log("flow=negative_unauthorized_pause");
         let scenario = self.scenario();
         let before = ScenarioSnapshot::capture(&mut self.trident, &scenario);
         let result = process_ix!(
@@ -562,6 +703,7 @@ impl FuzzTest {
     }
 
     fn negative_unauthorized_update_minter(&mut self) {
+        Self::debug_log("flow=negative_unauthorized_update_minter");
         let scenario = self.scenario();
         let before = ScenarioSnapshot::capture(&mut self.trident, &scenario);
         let result = process_ix!(
@@ -581,6 +723,7 @@ impl FuzzTest {
     }
 
     fn negative_mint_while_paused(&mut self) {
+        Self::debug_log("flow=negative_mint_while_paused");
         let scenario = self.scenario();
         if !scenario.config(&mut self.trident).paused {
             let pause = process_ix!(
@@ -607,6 +750,7 @@ impl FuzzTest {
     }
 
     fn negative_burn_while_paused(&mut self) {
+        Self::debug_log("flow=negative_burn_while_paused");
         let scenario = self.scenario();
         if !scenario.config(&mut self.trident).paused {
             let pause = process_ix!(
@@ -633,6 +777,7 @@ impl FuzzTest {
     }
 
     fn negative_zero_amount_mint(&mut self) {
+        Self::debug_log("flow=negative_zero_amount_mint");
         let scenario = self.scenario();
         if scenario.config(&mut self.trident).paused {
             let unpause = process_ix!(
@@ -658,6 +803,7 @@ impl FuzzTest {
     }
 
     fn negative_blacklist_or_seize(&mut self) {
+        Self::debug_log("flow=negative_blacklist_or_seize");
         let scenario = self.scenario();
         let before = ScenarioSnapshot::capture(&mut self.trident, &scenario);
 
@@ -674,6 +820,18 @@ impl FuzzTest {
             );
             assert_custom_error!(result, StablecoinError::ComplianceNotEnabled);
         } else {
+            if scenario.config(&mut self.trident).paused {
+                let unpause = process_ix!(
+                    &mut self.trident,
+                    unpause_ix(scenario.authority, scenario.mint),
+                    "PrepareNegativeSeizeUnpause"
+                );
+                assert!(
+                    unpause.is_success(),
+                    "unpause setup should succeed: {}",
+                    unpause.logs()
+                );
+            }
             if !scenario
                 .blacklist_entry(&mut self.trident, scenario.user_a)
                 .is_some()
@@ -740,6 +898,7 @@ impl FuzzTest {
     }
 
     fn negative_invalid_treasury_seize(&mut self) {
+        Self::debug_log("flow=negative_invalid_treasury_seize");
         let scenario = self.scenario();
         if scenario.preset == state_model::PresetKind::Sss1 {
             self.negative_unauthorized_pause();
@@ -816,7 +975,7 @@ impl FuzzTest {
                 scenario.user_a_account,
                 scenario.user_b_account,
                 scenario.user_a,
-                scenario.authority,
+                scenario.user_b,
                 1,
             ),
             "InvalidTreasurySeize"
@@ -824,5 +983,123 @@ impl FuzzTest {
         assert_custom_error!(result, StablecoinError::InvalidTreasuryAccount);
         let after = ScenarioSnapshot::capture(&mut self.trident, &scenario);
         assert_snapshot_unchanged(&before, &after, "invalid treasury seize");
+    }
+
+    fn negative_transfer_hook_blacklist(&mut self) {
+        Self::debug_log("flow=negative_transfer_hook_blacklist");
+        let scenario = self.scenario();
+        if scenario.preset == state_model::PresetKind::Sss1 {
+            self.negative_blacklist_or_seize();
+            return;
+        }
+        if scenario.config(&mut self.trident).paused {
+            let unpause = process_ix!(
+                &mut self.trident,
+                unpause_ix(scenario.authority, scenario.mint),
+                "UnpauseBeforeNegativeTransferHook"
+            );
+            assert!(
+                unpause.is_success(),
+                "unpause before negative transfer should succeed: {}",
+                unpause.logs()
+            );
+        }
+        for (slot, account, label) in [
+            (TokenSlot::UserA, scenario.user_a_account, "ThawNegativeTransferSource"),
+            (
+                TokenSlot::UserB,
+                scenario.user_b_account,
+                "ThawNegativeTransferDestination",
+            ),
+        ] {
+            if scenario.token_is_frozen(&mut self.trident, slot) {
+                let thaw = process_ix!(
+                    &mut self.trident,
+                    thaw_account_ix(scenario.authority, scenario.mint, account),
+                    label
+                );
+                assert!(
+                    thaw.is_success(),
+                    "thaw setup for {label} should succeed: {}",
+                    thaw.logs()
+                );
+            }
+        }
+        if scenario.token_amount(&mut self.trident, TokenSlot::UserA) == 0 {
+            let refill = process_ix!(
+                &mut self.trident,
+                mint_ix(scenario.authority, scenario.mint, scenario.user_a_account, 10),
+                "RefillNegativeTransferSource"
+            );
+            assert!(
+                refill.is_success(),
+                "refill before negative transfer should succeed: {}",
+                refill.logs()
+            );
+        }
+
+        let blacklist_sender = self.trident.random_bool();
+        let (wallet, expected_error, label) = if blacklist_sender {
+            (
+                scenario.user_a,
+                TransferHookError::SourceBlacklisted,
+                "BlacklistNegativeTransferSource",
+            )
+        } else {
+            (
+                scenario.user_b,
+                TransferHookError::DestinationBlacklisted,
+                "BlacklistNegativeTransferDestination",
+            )
+        };
+        for existing_wallet in [scenario.user_a, scenario.user_b] {
+            if existing_wallet != wallet
+                && scenario
+                    .blacklist_entry(&mut self.trident, existing_wallet)
+                    .is_some()
+            {
+                let remove = process_ix!(
+                    &mut self.trident,
+                    remove_from_blacklist_ix(scenario.authority, scenario.mint, existing_wallet),
+                    "ClearOtherNegativeTransferBlacklist"
+                );
+                assert!(
+                    remove.is_success(),
+                    "clearing unrelated blacklist should succeed: {}",
+                    remove.logs()
+                );
+            }
+        }
+        if scenario.blacklist_entry(&mut self.trident, wallet).is_none() {
+            let add = process_ix!(
+                &mut self.trident,
+                add_to_blacklist_ix(scenario.authority, scenario.mint, wallet, "fuzz".to_string()),
+                label
+            );
+            assert!(
+                add.is_success(),
+                "blacklist setup for negative transfer should succeed: {}",
+                add.logs()
+            );
+        }
+
+        let before = ScenarioSnapshot::capture(&mut self.trident, &scenario);
+        let result = process_ix!(
+            &mut self.trident,
+            transfer_checked_with_hook_ix(
+                scenario.user_a_account,
+                scenario.mint,
+                scenario.user_b_account,
+                scenario.user_a,
+                scenario.user_a,
+                scenario.user_b,
+                1,
+                6,
+            ),
+            "TransferHookBlacklisted"
+        );
+        assert_custom_error!(result, expected_error);
+        let after = ScenarioSnapshot::capture(&mut self.trident, &scenario);
+        assert_snapshot_unchanged(&before, &after, "transfer hook blacklist");
     }
 }
