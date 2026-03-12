@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 cd "$ROOT_DIR"
-yarn build:ts
 cargo check --workspace
 anchor build
+yarn generate
+yarn build:ts
 

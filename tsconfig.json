@@ -13,13 +13,19 @@
   "files": [],
   "references": [
     {
-      "path": "./sdk/generated"
+      "path": "./sdk/generated-kit"
+    },
+    {
+      "path": "./sdk/generated-web3js"
     },
     {
       "path": "./sdk/client"
     },
     {
       "path": "./sdk/cli"
+    },
+    {
+      "path": "./sdk/token"
     }
   ]
 }
