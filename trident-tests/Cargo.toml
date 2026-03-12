@@ -1,0 +1,23 @@
+[workspace]
+
+[package]
+name = "fuzz_tests"
+version = "0.1.0"
+description = "Created with Trident"
+edition = "2021"
+
+[dependencies]
+anchor-lang = "0.32.1"
+borsh = "1.5.3"
+spl-token-2022 = "8.0.1"
+sss-common = { path = "../modules/sss-common" }
+stablecoin = { path = "../programs/stablecoin", features = ["no-entrypoint"] }
+transfer-hook = { path = "../programs/transfer-hook", features = ["no-entrypoint"] }
+
+[dependencies.trident-fuzz]
+version = "0.12.0"
+features = ["token"]
+
+[[bin]]
+name = "fuzz_0"
+path = "fuzz_0/test_fuzz.rs"

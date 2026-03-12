@@ -1,0 +1,16 @@
+[package]
+name = "sss-litesvm-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anchor-lang.workspace = true
+litesvm.workspace = true
+solana-sdk.workspace = true
+spl-associated-token-account.workspace = true
+spl-token-2022.workspace = true
+sss-common = { path = "../../modules/sss-common" }
+stablecoin = { path = "../../programs/stablecoin", features = ["no-entrypoint"] }
+transfer-hook = { path = "../../programs/transfer-hook", features = ["no-entrypoint"] }

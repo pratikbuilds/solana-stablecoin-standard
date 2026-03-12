@@ -25,6 +25,38 @@ yarn verify
 
 `yarn build` runs the TypeScript build, Rust workspace check, and Anchor build in one pipeline.
 
+## Devnet Integration Tests
+
+The Devnet suite uses Mocha + TypeScript and targets the currently deployed workspace programs.
+
+Before running the tests:
+
+1. Fund `~/.config/solana/id.json` on Devnet.
+2. Deploy the latest programs and refresh the fixture file:
+
+```bash
+yarn test:devnet:deploy
+```
+
+Then run the integration suite:
+
+```bash
+yarn test:devnet
+```
+
+Run a focused preset flow:
+
+```bash
+yarn test:devnet --grep "SSS-1 devnet flow"
+yarn test:devnet --grep "SSS-2 devnet flow"
+```
+
+Run the bounded stress suite:
+
+```bash
+DEVNET_STRESS_ITERATIONS=2 yarn test:devnet:stress
+```
+
 ## Current status
 
 Phase 1 is a functional workspace:

@@ -14,10 +14,19 @@
     "build:ts": "tsc -b sdk/generated sdk/client sdk/cli",
     "build:rust": "cargo check --workspace",
     "build:anchor": "anchor build",
-    "verify": "./scripts/check.sh"
+    "verify": "./scripts/check.sh",
+    "test:devnet:deploy": "./scripts/deploy-devnet.sh",
+    "test:devnet": "mocha --require tsx/cjs --file tests/devnet/mocha.setup.ts \"tests/devnet/**/*.spec.ts\"",
+    "test:devnet:stress": "mocha --require tsx/cjs --file tests/devnet/mocha.setup.ts \"tests/devnet/stress.spec.ts\""
   },
   "devDependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^24.0.0",
+    "mocha": "^11.1.0",
+    "tsx": "^4.20.3",
     "typescript": "^5.8.3"
   }
 }

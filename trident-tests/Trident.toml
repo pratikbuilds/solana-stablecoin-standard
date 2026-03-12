@@ -1,0 +1,12 @@
+[fuzz.metrics]
+enabled = true
+
+
+[[fuzz.programs]]
+address = "2MKyZ3ugkGyfConZAsqm3hwRoY6c2k7zwZaX1XCSHsJH"
+program = "../target/deploy/stablecoin.so"
+
+[[fuzz.programs]]
+address = "6mjTtZjRFK8FWA24f2KNEfMVcAvpYLWcpMzLvKiVXyd2"
+program = "../target/deploy/transfer_hook.so"
+ 

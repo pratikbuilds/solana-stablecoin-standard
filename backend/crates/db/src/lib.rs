@@ -13,4 +13,3 @@ pub fn health_report(name: &str, layer: &str) -> HealthReport {
         status: "bootstrap-ready".to_string(),
     }
 }
-
