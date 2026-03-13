@@ -30,10 +30,10 @@ import {
   getInitializeExtraAccountMetaListInstructionAsync,
   getTransferHookInstructionAsync,
   parseInitializeExtraAccountMetaListInstruction,
-  parseTransferHookInstruction,
+  parseTransferHookInstructionItem,
   type InitializeExtraAccountMetaListAsyncInput,
   type ParsedInitializeExtraAccountMetaListInstruction,
-  type ParsedTransferHookInstruction,
+  type ParsedTransferHookInstructionItem,
   type TransferHookAsyncInput,
 } from "../instructions";
 
@@ -85,7 +85,7 @@ export type ParsedTransferHookInstruction<
     } & ParsedInitializeExtraAccountMetaListInstruction<TProgram>)
   | ({
       instructionType: TransferHookInstruction.TransferHook;
-    } & ParsedTransferHookInstruction<TProgram>);
+    } & ParsedTransferHookInstructionItem<TProgram>);
 
 export function parseTransferHookInstruction<TProgram extends string>(
   instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
@@ -103,7 +103,7 @@ export function parseTransferHookInstruction<TProgram extends string>(
       assertIsInstructionWithAccounts(instruction);
       return {
         instructionType: TransferHookInstruction.TransferHook,
-        ...parseTransferHookInstruction(instruction),
+        ...parseTransferHookInstructionItem(instruction),
       };
     }
     default:

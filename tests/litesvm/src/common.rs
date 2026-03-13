@@ -96,6 +96,10 @@ pub fn extra_account_meta_list_pda(
     .0
 }
 
+pub fn stablecoin_event_authority_pda() -> solana_sdk::pubkey::Pubkey {
+    solana_sdk::pubkey::Pubkey::find_program_address(&[b"__event_authority"], &stablecoin::ID).0
+}
+
 pub fn initialize_ix(
     authority: solana_sdk::pubkey::Pubkey,
     mint: solana_sdk::pubkey::Pubkey,
@@ -113,6 +117,8 @@ pub fn initialize_ix(
         token_program: spl_token_2022::id(),
         system_program: system_program::ID,
         rent: sysvar::rent::ID,
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {
@@ -137,6 +143,8 @@ pub fn update_minter_ix(
         minter,
         minter_quota: minter_quota_pda(&mint, &minter),
         system_program: system_program::ID,
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {
@@ -162,6 +170,8 @@ pub fn update_roles_ix(
         authority,
         config: config_pda(&mint),
         role_config: roles_pda(&mint),
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {
@@ -180,6 +190,8 @@ pub fn transfer_authority_ix(
         authority,
         config: config_pda(&mint),
         role_config: roles_pda(&mint),
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {
@@ -202,6 +214,8 @@ pub fn mint_ix(
         mint,
         to,
         token_program: spl_token_2022::id(),
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {
@@ -216,6 +230,8 @@ pub fn pause_ix(authority: Pubkey, mint: Pubkey) -> Instruction {
         authority,
         config: config_pda(&mint),
         role_config: roles_pda(&mint),
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {
@@ -230,6 +246,8 @@ pub fn unpause_ix(authority: Pubkey, mint: Pubkey) -> Instruction {
         authority,
         config: config_pda(&mint),
         role_config: roles_pda(&mint),
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {
@@ -247,6 +265,8 @@ pub fn burn_ix(authority: Pubkey, mint: Pubkey, from: Pubkey, amount: u64) -> In
         mint,
         from,
         token_program: spl_token_2022::id(),
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {
@@ -269,6 +289,8 @@ pub fn add_to_blacklist_ix(
         wallet,
         blacklist_entry: blacklist_pda(&mint, &wallet),
         system_program: system_program::ID,
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {
@@ -284,6 +306,8 @@ pub fn remove_from_blacklist_ix(authority: Pubkey, mint: Pubkey, wallet: Pubkey)
         config: config_pda(&mint),
         role_config: roles_pda(&mint),
         blacklist_entry: blacklist_pda(&mint, &wallet),
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {
@@ -314,6 +338,8 @@ pub fn seize_ix(
         extra_account_meta_list: extra_account_meta_list_pda(&mint),
         destination_blacklist: blacklist_pda(&mint, &treasury_owner),
         token_program: spl_token_2022::id(),
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {
@@ -331,6 +357,8 @@ pub fn freeze_account_ix(authority: Pubkey, mint: Pubkey, account: Pubkey) -> In
         mint,
         account,
         token_program: spl_token_2022::id(),
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {
@@ -348,6 +376,8 @@ pub fn thaw_account_ix(authority: Pubkey, mint: Pubkey, account: Pubkey) -> Inst
         mint,
         account,
         token_program: spl_token_2022::id(),
+        event_authority: stablecoin_event_authority_pda(),
+        program: stablecoin::ID,
     };
 
     Instruction {

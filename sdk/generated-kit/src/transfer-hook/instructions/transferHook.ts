@@ -49,7 +49,7 @@ export function getTransferHookDiscriminatorBytes() {
   );
 }
 
-export type TransferHookInstruction<
+export type TransferHookInstructionItem<
   TProgram extends string = typeof TRANSFER_HOOK_PROGRAM_ADDRESS,
   TAccountSource extends string | AccountMeta<string> = string,
   TAccountMint extends string | AccountMeta<string> = string,
@@ -178,7 +178,7 @@ export async function getTransferHookInstructionAsync<
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
-  TransferHookInstruction<
+  TransferHookInstructionItem<
     TProgramAddress,
     TAccountSource,
     TAccountMint,
@@ -262,7 +262,7 @@ export async function getTransferHookInstructionAsync<
       args as TransferHookInstructionDataArgs,
     ),
     programAddress,
-  } as TransferHookInstruction<
+  } as TransferHookInstructionItem<
     TProgramAddress,
     TAccountSource,
     TAccountMint,
@@ -323,7 +323,7 @@ export function getTransferHookInstruction<
     TAccountDestinationBlacklist
   >,
   config?: { programAddress?: TProgramAddress },
-): TransferHookInstruction<
+): TransferHookInstructionItem<
   TProgramAddress,
   TAccountSource,
   TAccountMint,
@@ -388,7 +388,7 @@ export function getTransferHookInstruction<
       args as TransferHookInstructionDataArgs,
     ),
     programAddress,
-  } as TransferHookInstruction<
+  } as TransferHookInstructionItem<
     TProgramAddress,
     TAccountSource,
     TAccountMint,
@@ -402,7 +402,7 @@ export function getTransferHookInstruction<
   >);
 }
 
-export type ParsedTransferHookInstruction<
+export type ParsedTransferHookInstructionItem<
   TProgram extends string = typeof TRANSFER_HOOK_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
@@ -421,14 +421,14 @@ export type ParsedTransferHookInstruction<
   data: TransferHookInstructionData;
 };
 
-export function parseTransferHookInstruction<
+export function parseTransferHookInstructionItem<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedTransferHookInstruction<TProgram, TAccountMetas> {
+): ParsedTransferHookInstructionItem<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 9) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,

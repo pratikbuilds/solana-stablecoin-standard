@@ -47,7 +47,7 @@ export function createMintInstruction(
     const [derived] = findMinterQuotaPda(
       {
         mint: accounts.mint,
-        authority: accounts.authority,
+        minter: accounts.authority,
       },
       programId,
     );
