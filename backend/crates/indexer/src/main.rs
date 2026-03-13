@@ -1,7 +1,14 @@
 use anyhow::Result;
+use sss_indexer::{IndexerConfig, IndexerService};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-fn main() -> Result<()> {
-    let report = sss_db::health_report("indexer", "backend");
-    println!("{}", serde_json::to_string_pretty(&report)?);
-    Ok(())
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env().add_directive("sss_indexer=info".parse()?))
+        .with(fmt::layer().json())
+        .init();
+
+    let service = IndexerService::new(IndexerConfig::from_env()).await?;
+    service.run_live().await
 }

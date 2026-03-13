@@ -60,6 +60,8 @@ export type MintInstruction<
   TAccountTo extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -82,6 +84,12 @@ export type MintInstruction<
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -127,6 +135,8 @@ export type MintAsyncInput<
   TAccountMint extends string = string,
   TAccountTo extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config?: Address<TAccountConfig>;
@@ -134,6 +144,8 @@ export type MintAsyncInput<
   mint: Address<TAccountMint>;
   to: Address<TAccountTo>;
   tokenProgram?: Address<TAccountTokenProgram>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   amount: MintInstructionDataArgs["amount"];
 };
 
@@ -144,6 +156,8 @@ export async function getMintInstructionAsync<
   TAccountMint extends string,
   TAccountTo extends string,
   TAccountTokenProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
   input: MintAsyncInput<
@@ -152,7 +166,9 @@ export async function getMintInstructionAsync<
     TAccountMinterQuota,
     TAccountMint,
     TAccountTo,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
@@ -163,7 +179,9 @@ export async function getMintInstructionAsync<
     TAccountMinterQuota,
     TAccountMint,
     TAccountTo,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >
 > {
   // Program address.
@@ -177,6 +195,8 @@ export async function getMintInstructionAsync<
     mint: { value: input.mint ?? null, isWritable: true },
     to: { value: input.to ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -221,6 +241,19 @@ export async function getMintInstructionAsync<
     accounts.tokenProgram.value =
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
   }
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ]),
+        ),
+      ],
+    });
+  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
@@ -231,6 +264,8 @@ export async function getMintInstructionAsync<
       getAccountMeta("mint", accounts.mint),
       getAccountMeta("to", accounts.to),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getMintInstructionDataEncoder().encode(
       args as MintInstructionDataArgs,
@@ -243,7 +278,9 @@ export async function getMintInstructionAsync<
     TAccountMinterQuota,
     TAccountMint,
     TAccountTo,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -254,6 +291,8 @@ export type MintInput<
   TAccountMint extends string = string,
   TAccountTo extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config: Address<TAccountConfig>;
@@ -261,6 +300,8 @@ export type MintInput<
   mint: Address<TAccountMint>;
   to: Address<TAccountTo>;
   tokenProgram?: Address<TAccountTokenProgram>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   amount: MintInstructionDataArgs["amount"];
 };
 
@@ -271,6 +312,8 @@ export function getMintInstruction<
   TAccountMint extends string,
   TAccountTo extends string,
   TAccountTokenProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
   input: MintInput<
@@ -279,7 +322,9 @@ export function getMintInstruction<
     TAccountMinterQuota,
     TAccountMint,
     TAccountTo,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): MintInstruction<
@@ -289,7 +334,9 @@ export function getMintInstruction<
   TAccountMinterQuota,
   TAccountMint,
   TAccountTo,
-  TAccountTokenProgram
+  TAccountTokenProgram,
+  TAccountEventAuthority,
+  TAccountProgram
 > {
   // Program address.
   const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
@@ -302,6 +349,8 @@ export function getMintInstruction<
     mint: { value: input.mint ?? null, isWritable: true },
     to: { value: input.to ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -326,6 +375,8 @@ export function getMintInstruction<
       getAccountMeta("mint", accounts.mint),
       getAccountMeta("to", accounts.to),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getMintInstructionDataEncoder().encode(
       args as MintInstructionDataArgs,
@@ -338,7 +389,9 @@ export function getMintInstruction<
     TAccountMinterQuota,
     TAccountMint,
     TAccountTo,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -354,6 +407,8 @@ export type ParsedMintInstruction<
     mint: TAccountMetas[3];
     to: TAccountMetas[4];
     tokenProgram: TAccountMetas[5];
+    eventAuthority: TAccountMetas[6];
+    program: TAccountMetas[7];
   };
   data: MintInstructionData;
 };
@@ -366,12 +421,12 @@ export function parseMintInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedMintInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 6) {
+  if (instruction.accounts.length < 8) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 6,
+        expectedAccountMetas: 8,
       },
     );
   }
@@ -390,6 +445,8 @@ export function parseMintInstruction<
       mint: getNextAccount(),
       to: getNextAccount(),
       tokenProgram: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getMintInstructionDataDecoder().decode(instruction.data),
   };

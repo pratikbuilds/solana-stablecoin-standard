@@ -12,6 +12,7 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
@@ -51,6 +52,8 @@ export type PauseInstruction<
   TAccountAuthority extends string | AccountMeta<string> = string,
   TAccountConfig extends string | AccountMeta<string> = string,
   TAccountRoleConfig extends string | AccountMeta<string> = string,
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -66,6 +69,12 @@ export type PauseInstruction<
       TAccountRoleConfig extends string
         ? ReadonlyAccount<TAccountRoleConfig>
         : TAccountRoleConfig,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -97,29 +106,45 @@ export function getPauseInstructionDataCodec(): FixedSizeCodec<
   );
 }
 
-export type PauseInput<
+export type PauseAsyncInput<
   TAccountAuthority extends string = string,
   TAccountConfig extends string = string,
   TAccountRoleConfig extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config: Address<TAccountConfig>;
   roleConfig: Address<TAccountRoleConfig>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
 };
 
-export function getPauseInstruction<
+export async function getPauseInstructionAsync<
   TAccountAuthority extends string,
   TAccountConfig extends string,
   TAccountRoleConfig extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
-  input: PauseInput<TAccountAuthority, TAccountConfig, TAccountRoleConfig>,
+  input: PauseAsyncInput<
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >,
   config?: { programAddress?: TProgramAddress },
-): PauseInstruction<
-  TProgramAddress,
-  TAccountAuthority,
-  TAccountConfig,
-  TAccountRoleConfig
+): Promise<
+  PauseInstruction<
+    TProgramAddress,
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >
 > {
   // Program address.
   const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
@@ -129,6 +154,98 @@ export function getPauseInstruction<
     authority: { value: input.authority ?? null, isWritable: false },
     config: { value: input.config ?? null, isWritable: true },
     roleConfig: { value: input.roleConfig ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
+  };
+  const accounts = originalAccounts as Record<
+    keyof typeof originalAccounts,
+    ResolvedInstructionAccount
+  >;
+
+  // Resolve default values.
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ]),
+        ),
+      ],
+    });
+  }
+
+  const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
+  return Object.freeze({
+    accounts: [
+      getAccountMeta("authority", accounts.authority),
+      getAccountMeta("config", accounts.config),
+      getAccountMeta("roleConfig", accounts.roleConfig),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
+    ],
+    data: getPauseInstructionDataEncoder().encode({}),
+    programAddress,
+  } as PauseInstruction<
+    TProgramAddress,
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >);
+}
+
+export type PauseInput<
+  TAccountAuthority extends string = string,
+  TAccountConfig extends string = string,
+  TAccountRoleConfig extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
+> = {
+  authority: TransactionSigner<TAccountAuthority>;
+  config: Address<TAccountConfig>;
+  roleConfig: Address<TAccountRoleConfig>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
+};
+
+export function getPauseInstruction<
+  TAccountAuthority extends string,
+  TAccountConfig extends string,
+  TAccountRoleConfig extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
+  TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
+>(
+  input: PauseInput<
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >,
+  config?: { programAddress?: TProgramAddress },
+): PauseInstruction<
+  TProgramAddress,
+  TAccountAuthority,
+  TAccountConfig,
+  TAccountRoleConfig,
+  TAccountEventAuthority,
+  TAccountProgram
+> {
+  // Program address.
+  const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
+
+  // Original accounts.
+  const originalAccounts = {
+    authority: { value: input.authority ?? null, isWritable: false },
+    config: { value: input.config ?? null, isWritable: true },
+    roleConfig: { value: input.roleConfig ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -141,6 +258,8 @@ export function getPauseInstruction<
       getAccountMeta("authority", accounts.authority),
       getAccountMeta("config", accounts.config),
       getAccountMeta("roleConfig", accounts.roleConfig),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getPauseInstructionDataEncoder().encode({}),
     programAddress,
@@ -148,7 +267,9 @@ export function getPauseInstruction<
     TProgramAddress,
     TAccountAuthority,
     TAccountConfig,
-    TAccountRoleConfig
+    TAccountRoleConfig,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -161,6 +282,8 @@ export type ParsedPauseInstruction<
     authority: TAccountMetas[0];
     config: TAccountMetas[1];
     roleConfig: TAccountMetas[2];
+    eventAuthority: TAccountMetas[3];
+    program: TAccountMetas[4];
   };
   data: PauseInstructionData;
 };
@@ -173,12 +296,12 @@ export function parsePauseInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedPauseInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 3) {
+  if (instruction.accounts.length < 5) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 3,
+        expectedAccountMetas: 5,
       },
     );
   }
@@ -194,6 +317,8 @@ export function parsePauseInstruction<
       authority: getNextAccount(),
       config: getNextAccount(),
       roleConfig: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getPauseInstructionDataDecoder().decode(instruction.data),
   };

@@ -6,6 +6,7 @@
 import { createFromRoot } from "codama";
 import { rootNodeFromAnchor } from "@codama/nodes-from-anchor";
 import { renderVisitor as renderKitVisitor } from "@codama/renderers-js";
+import { renderVisitor as renderRustVisitor } from "@codama/renderers-rust";
 import { renderVisitor as renderWeb3jsVisitor } from "@pratikbuilds/web3js-legacy";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -16,6 +17,7 @@ const ROOT = resolve(__dirname, "..");
 const TARGET_IDL = resolve(ROOT, "target/idl");
 const SDK_KIT = resolve(ROOT, "sdk/generated-kit");
 const SDK_WEB3JS = resolve(ROOT, "sdk/generated-web3js");
+const STABLECOIN_CLIENT_CRATE = resolve(ROOT, "backend/crates/stablecoin_client");
 
 const PROGRAMS = [
   { idl: "stablecoin.json", outDir: "src/stablecoin" },
@@ -46,5 +48,19 @@ for (const { idl, outDir } of PROGRAMS) {
   );
   console.log(`Generated Web3.js SDK: ${idl} -> ${outDir}`);
 }
+
+// Generate Rust client for stablecoin only (used by backend API signer).
+const stablecoinIdlPath = resolve(TARGET_IDL, "stablecoin.json");
+const stablecoinIdl = JSON.parse(readFileSync(stablecoinIdlPath, "utf8"));
+const stablecoinCodama = createFromRoot(rootNodeFromAnchor(stablecoinIdl));
+stablecoinCodama.accept(
+  renderRustVisitor(STABLECOIN_CLIENT_CRATE, {
+    generatedFolder: "src/generated",
+    deleteFolderBeforeRendering: true,
+    formatCode: true,
+    syncCargoToml: true,
+  }),
+);
+console.log("Generated Rust client: stablecoin.json -> backend/crates/stablecoin_client");
 
 console.log("SDK generation complete.");

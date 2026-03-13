@@ -14,6 +14,7 @@ import {
   getAddressEncoder,
   getBytesDecoder,
   getBytesEncoder,
+  getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
@@ -28,6 +29,7 @@ import {
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
+  type ReadonlyAccount,
   type ReadonlySignerAccount,
   type ReadonlyUint8Array,
   type TransactionSigner,
@@ -54,6 +56,8 @@ export type TransferAuthorityInstruction<
   TAccountAuthority extends string | AccountMeta<string> = string,
   TAccountConfig extends string | AccountMeta<string> = string,
   TAccountRoleConfig extends string | AccountMeta<string> = string,
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -69,6 +73,12 @@ export type TransferAuthorityInstruction<
       TAccountRoleConfig extends string
         ? WritableAccount<TAccountRoleConfig>
         : TAccountRoleConfig,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -107,34 +117,46 @@ export function getTransferAuthorityInstructionDataCodec(): FixedSizeCodec<
   );
 }
 
-export type TransferAuthorityInput<
+export type TransferAuthorityAsyncInput<
   TAccountAuthority extends string = string,
   TAccountConfig extends string = string,
   TAccountRoleConfig extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config: Address<TAccountConfig>;
   roleConfig: Address<TAccountRoleConfig>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   newAuthority: TransferAuthorityInstructionDataArgs["newAuthority"];
 };
 
-export function getTransferAuthorityInstruction<
+export async function getTransferAuthorityInstructionAsync<
   TAccountAuthority extends string,
   TAccountConfig extends string,
   TAccountRoleConfig extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
-  input: TransferAuthorityInput<
+  input: TransferAuthorityAsyncInput<
     TAccountAuthority,
     TAccountConfig,
-    TAccountRoleConfig
+    TAccountRoleConfig,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
-): TransferAuthorityInstruction<
-  TProgramAddress,
-  TAccountAuthority,
-  TAccountConfig,
-  TAccountRoleConfig
+): Promise<
+  TransferAuthorityInstruction<
+    TProgramAddress,
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >
 > {
   // Program address.
   const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
@@ -144,6 +166,104 @@ export function getTransferAuthorityInstruction<
     authority: { value: input.authority ?? null, isWritable: false },
     config: { value: input.config ?? null, isWritable: true },
     roleConfig: { value: input.roleConfig ?? null, isWritable: true },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
+  };
+  const accounts = originalAccounts as Record<
+    keyof typeof originalAccounts,
+    ResolvedInstructionAccount
+  >;
+
+  // Original args.
+  const args = { ...input };
+
+  // Resolve default values.
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ]),
+        ),
+      ],
+    });
+  }
+
+  const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
+  return Object.freeze({
+    accounts: [
+      getAccountMeta("authority", accounts.authority),
+      getAccountMeta("config", accounts.config),
+      getAccountMeta("roleConfig", accounts.roleConfig),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
+    ],
+    data: getTransferAuthorityInstructionDataEncoder().encode(
+      args as TransferAuthorityInstructionDataArgs,
+    ),
+    programAddress,
+  } as TransferAuthorityInstruction<
+    TProgramAddress,
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >);
+}
+
+export type TransferAuthorityInput<
+  TAccountAuthority extends string = string,
+  TAccountConfig extends string = string,
+  TAccountRoleConfig extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
+> = {
+  authority: TransactionSigner<TAccountAuthority>;
+  config: Address<TAccountConfig>;
+  roleConfig: Address<TAccountRoleConfig>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
+  newAuthority: TransferAuthorityInstructionDataArgs["newAuthority"];
+};
+
+export function getTransferAuthorityInstruction<
+  TAccountAuthority extends string,
+  TAccountConfig extends string,
+  TAccountRoleConfig extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
+  TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
+>(
+  input: TransferAuthorityInput<
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountEventAuthority,
+    TAccountProgram
+  >,
+  config?: { programAddress?: TProgramAddress },
+): TransferAuthorityInstruction<
+  TProgramAddress,
+  TAccountAuthority,
+  TAccountConfig,
+  TAccountRoleConfig,
+  TAccountEventAuthority,
+  TAccountProgram
+> {
+  // Program address.
+  const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
+
+  // Original accounts.
+  const originalAccounts = {
+    authority: { value: input.authority ?? null, isWritable: false },
+    config: { value: input.config ?? null, isWritable: true },
+    roleConfig: { value: input.roleConfig ?? null, isWritable: true },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -159,6 +279,8 @@ export function getTransferAuthorityInstruction<
       getAccountMeta("authority", accounts.authority),
       getAccountMeta("config", accounts.config),
       getAccountMeta("roleConfig", accounts.roleConfig),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getTransferAuthorityInstructionDataEncoder().encode(
       args as TransferAuthorityInstructionDataArgs,
@@ -168,7 +290,9 @@ export function getTransferAuthorityInstruction<
     TProgramAddress,
     TAccountAuthority,
     TAccountConfig,
-    TAccountRoleConfig
+    TAccountRoleConfig,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -181,6 +305,8 @@ export type ParsedTransferAuthorityInstruction<
     authority: TAccountMetas[0];
     config: TAccountMetas[1];
     roleConfig: TAccountMetas[2];
+    eventAuthority: TAccountMetas[3];
+    program: TAccountMetas[4];
   };
   data: TransferAuthorityInstructionData;
 };
@@ -193,12 +319,12 @@ export function parseTransferAuthorityInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedTransferAuthorityInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 3) {
+  if (instruction.accounts.length < 5) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 3,
+        expectedAccountMetas: 5,
       },
     );
   }
@@ -214,6 +340,8 @@ export function parseTransferAuthorityInstruction<
       authority: getNextAccount(),
       config: getNextAccount(),
       roleConfig: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getTransferAuthorityInstructionDataDecoder().decode(instruction.data),
   };

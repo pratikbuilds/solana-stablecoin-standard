@@ -1,7 +1,13 @@
 use anyhow::Result;
+use sss_api::{run, ApiConfig};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-fn main() -> Result<()> {
-    let report = sss_db::health_report("api", "backend");
-    println!("{}", serde_json::to_string_pretty(&report)?);
-    Ok(())
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::registry()
+        .with(EnvFilter::from_default_env().add_directive("sss_api=info".parse()?))
+        .with(fmt::layer().json())
+        .init();
+
+    run(ApiConfig::from_env()).await
 }

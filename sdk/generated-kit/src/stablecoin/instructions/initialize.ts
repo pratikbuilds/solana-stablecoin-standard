@@ -73,6 +73,8 @@ export type InitializeInstruction<
     "11111111111111111111111111111111",
   TAccountRent extends string | AccountMeta<string> =
     "SysvarRent111111111111111111111111111111111",
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -106,6 +108,12 @@ export type InitializeInstruction<
       TAccountRent extends string
         ? ReadonlyAccount<TAccountRent>
         : TAccountRent,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -180,6 +188,8 @@ export type InitializeAsyncInput<
   TAccountTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
   TAccountRent extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   mint: TransactionSigner<TAccountMint>;
@@ -190,6 +200,8 @@ export type InitializeAsyncInput<
   tokenProgram?: Address<TAccountTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
   rent?: Address<TAccountRent>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   name: InitializeInstructionDataArgs["name"];
   symbol: InitializeInstructionDataArgs["symbol"];
   uri: InitializeInstructionDataArgs["uri"];
@@ -209,6 +221,8 @@ export async function getInitializeInstructionAsync<
   TAccountTokenProgram extends string,
   TAccountSystemProgram extends string,
   TAccountRent extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
   input: InitializeAsyncInput<
@@ -220,7 +234,9 @@ export async function getInitializeInstructionAsync<
     TAccountTransferHookProgram,
     TAccountTokenProgram,
     TAccountSystemProgram,
-    TAccountRent
+    TAccountRent,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
@@ -234,7 +250,9 @@ export async function getInitializeInstructionAsync<
     TAccountTransferHookProgram,
     TAccountTokenProgram,
     TAccountSystemProgram,
-    TAccountRent
+    TAccountRent,
+    TAccountEventAuthority,
+    TAccountProgram
   >
 > {
   // Program address.
@@ -257,6 +275,8 @@ export async function getInitializeInstructionAsync<
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
     rent: { value: input.rent ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -301,6 +321,19 @@ export async function getInitializeInstructionAsync<
     accounts.rent.value =
       "SysvarRent111111111111111111111111111111111" as Address<"SysvarRent111111111111111111111111111111111">;
   }
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ]),
+        ),
+      ],
+    });
+  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
@@ -314,6 +347,8 @@ export async function getInitializeInstructionAsync<
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("rent", accounts.rent),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getInitializeInstructionDataEncoder().encode(
       args as InitializeInstructionDataArgs,
@@ -329,7 +364,9 @@ export async function getInitializeInstructionAsync<
     TAccountTransferHookProgram,
     TAccountTokenProgram,
     TAccountSystemProgram,
-    TAccountRent
+    TAccountRent,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -343,6 +380,8 @@ export type InitializeInput<
   TAccountTokenProgram extends string = string,
   TAccountSystemProgram extends string = string,
   TAccountRent extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   mint: TransactionSigner<TAccountMint>;
@@ -353,6 +392,8 @@ export type InitializeInput<
   tokenProgram?: Address<TAccountTokenProgram>;
   systemProgram?: Address<TAccountSystemProgram>;
   rent?: Address<TAccountRent>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   name: InitializeInstructionDataArgs["name"];
   symbol: InitializeInstructionDataArgs["symbol"];
   uri: InitializeInstructionDataArgs["uri"];
@@ -372,6 +413,8 @@ export function getInitializeInstruction<
   TAccountTokenProgram extends string,
   TAccountSystemProgram extends string,
   TAccountRent extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
   input: InitializeInput<
@@ -383,7 +426,9 @@ export function getInitializeInstruction<
     TAccountTransferHookProgram,
     TAccountTokenProgram,
     TAccountSystemProgram,
-    TAccountRent
+    TAccountRent,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): InitializeInstruction<
@@ -396,7 +441,9 @@ export function getInitializeInstruction<
   TAccountTransferHookProgram,
   TAccountTokenProgram,
   TAccountSystemProgram,
-  TAccountRent
+  TAccountRent,
+  TAccountEventAuthority,
+  TAccountProgram
 > {
   // Program address.
   const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
@@ -418,6 +465,8 @@ export function getInitializeInstruction<
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
     rent: { value: input.rent ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -453,6 +502,8 @@ export function getInitializeInstruction<
       getAccountMeta("tokenProgram", accounts.tokenProgram),
       getAccountMeta("systemProgram", accounts.systemProgram),
       getAccountMeta("rent", accounts.rent),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getInitializeInstructionDataEncoder().encode(
       args as InitializeInstructionDataArgs,
@@ -468,7 +519,9 @@ export function getInitializeInstruction<
     TAccountTransferHookProgram,
     TAccountTokenProgram,
     TAccountSystemProgram,
-    TAccountRent
+    TAccountRent,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -487,6 +540,8 @@ export type ParsedInitializeInstruction<
     tokenProgram: TAccountMetas[6];
     systemProgram: TAccountMetas[7];
     rent: TAccountMetas[8];
+    eventAuthority: TAccountMetas[9];
+    program: TAccountMetas[10];
   };
   data: InitializeInstructionData;
 };
@@ -499,12 +554,12 @@ export function parseInitializeInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedInitializeInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 9) {
+  if (instruction.accounts.length < 11) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 9,
+        expectedAccountMetas: 11,
       },
     );
   }
@@ -532,6 +587,8 @@ export function parseInitializeInstruction<
       tokenProgram: getNextAccount(),
       systemProgram: getNextAccount(),
       rent: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getInitializeInstructionDataDecoder().decode(instruction.data),
   };

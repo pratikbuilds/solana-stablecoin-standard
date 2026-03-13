@@ -5,6 +5,7 @@ const SEED_ROLES = Buffer.from("roles");
 const SEED_MINTER = Buffer.from("minter");
 const SEED_BLACKLIST = Buffer.from("blacklist");
 const SEED_EXTRA_ACCOUNT_METAS = Buffer.from("extra-account-metas");
+const SEED_EVENT_AUTHORITY = Buffer.from("__event_authority");
 
 export function configPda(
   stablecoinProgramId: PublicKey,
@@ -55,5 +56,12 @@ export function extraAccountMetaListPda(
   return PublicKey.findProgramAddressSync(
     [SEED_EXTRA_ACCOUNT_METAS, mint.toBuffer()],
     transferHookProgramId,
+  )[0];
+}
+
+export function eventAuthorityPda(stablecoinProgramId: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [SEED_EVENT_AUTHORITY],
+    stablecoinProgramId,
   )[0];
 }

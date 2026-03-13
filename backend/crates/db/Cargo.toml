@@ -6,6 +6,10 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+anyhow.workspace = true
+chrono.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
 sss-domain = { path = "../domain" }
-
+uuid.workspace = true

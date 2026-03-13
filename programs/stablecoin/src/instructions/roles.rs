@@ -21,6 +21,7 @@ pub struct UpdateRolesParams {
     pub seizer: Option<Pubkey>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct UpdateMinter<'info> {
     #[account(mut)]
@@ -50,6 +51,7 @@ pub struct UpdateMinter<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct UpdateRoles<'info> {
     pub authority: Signer<'info>,
@@ -66,6 +68,7 @@ pub struct UpdateRoles<'info> {
     pub role_config: Account<'info, RoleConfig>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct TransferAuthority<'info> {
     pub authority: Signer<'info>,
@@ -108,7 +111,7 @@ pub fn update_minter_handler(ctx: Context<UpdateMinter>, params: UpdateMinterPar
     minter_quota.quota = params.quota;
     minter_quota.active = params.active;
 
-    emit!(MinterUpdated {
+    emit_cpi!(MinterUpdated {
         mint: ctx.accounts.mint.key(),
         minter: params.minter,
         quota: params.quota,
@@ -147,7 +150,7 @@ pub fn update_roles_handler(ctx: Context<UpdateRoles>, params: UpdateRolesParams
         role_config.seizer = seizer;
     }
 
-    emit!(RolesUpdated {
+    emit_cpi!(RolesUpdated {
         mint: ctx.accounts.config.mint,
         authority: ctx.accounts.authority.key(),
     });
@@ -170,7 +173,7 @@ pub fn transfer_authority_handler(
     ctx.accounts.config.authority = new_authority;
     ctx.accounts.role_config.master_authority = new_authority;
 
-    emit!(AuthorityTransferred {
+    emit_cpi!(AuthorityTransferred {
         mint: ctx.accounts.config.mint,
         old_authority,
         new_authority,

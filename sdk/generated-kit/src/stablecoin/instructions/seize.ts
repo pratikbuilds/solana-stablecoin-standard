@@ -67,6 +67,8 @@ export type SeizeInstruction<
   TAccountDestinationBlacklist extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -107,6 +109,12 @@ export type SeizeInstruction<
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -158,6 +166,8 @@ export type SeizeAsyncInput<
   TAccountExtraAccountMetaList extends string = string,
   TAccountDestinationBlacklist extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config?: Address<TAccountConfig>;
@@ -171,6 +181,8 @@ export type SeizeAsyncInput<
   extraAccountMetaList?: Address<TAccountExtraAccountMetaList>;
   destinationBlacklist: Address<TAccountDestinationBlacklist>;
   tokenProgram?: Address<TAccountTokenProgram>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   amount: SeizeInstructionDataArgs["amount"];
 };
 
@@ -187,6 +199,8 @@ export async function getSeizeInstructionAsync<
   TAccountExtraAccountMetaList extends string,
   TAccountDestinationBlacklist extends string,
   TAccountTokenProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
   input: SeizeAsyncInput<
@@ -201,7 +215,9 @@ export async function getSeizeInstructionAsync<
     TAccountTransferHookProgram,
     TAccountExtraAccountMetaList,
     TAccountDestinationBlacklist,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
@@ -218,7 +234,9 @@ export async function getSeizeInstructionAsync<
     TAccountTransferHookProgram,
     TAccountExtraAccountMetaList,
     TAccountDestinationBlacklist,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >
 > {
   // Program address.
@@ -250,6 +268,8 @@ export async function getSeizeInstructionAsync<
       isWritable: false,
     },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -306,6 +326,19 @@ export async function getSeizeInstructionAsync<
     accounts.tokenProgram.value =
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
   }
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ]),
+        ),
+      ],
+    });
+  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
@@ -322,6 +355,8 @@ export async function getSeizeInstructionAsync<
       getAccountMeta("extraAccountMetaList", accounts.extraAccountMetaList),
       getAccountMeta("destinationBlacklist", accounts.destinationBlacklist),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getSeizeInstructionDataEncoder().encode(
       args as SeizeInstructionDataArgs,
@@ -340,7 +375,9 @@ export async function getSeizeInstructionAsync<
     TAccountTransferHookProgram,
     TAccountExtraAccountMetaList,
     TAccountDestinationBlacklist,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -357,6 +394,8 @@ export type SeizeInput<
   TAccountExtraAccountMetaList extends string = string,
   TAccountDestinationBlacklist extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config: Address<TAccountConfig>;
@@ -370,6 +409,8 @@ export type SeizeInput<
   extraAccountMetaList: Address<TAccountExtraAccountMetaList>;
   destinationBlacklist: Address<TAccountDestinationBlacklist>;
   tokenProgram?: Address<TAccountTokenProgram>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   amount: SeizeInstructionDataArgs["amount"];
 };
 
@@ -386,6 +427,8 @@ export function getSeizeInstruction<
   TAccountExtraAccountMetaList extends string,
   TAccountDestinationBlacklist extends string,
   TAccountTokenProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
   input: SeizeInput<
@@ -400,7 +443,9 @@ export function getSeizeInstruction<
     TAccountTransferHookProgram,
     TAccountExtraAccountMetaList,
     TAccountDestinationBlacklist,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): SeizeInstruction<
@@ -416,7 +461,9 @@ export function getSeizeInstruction<
   TAccountTransferHookProgram,
   TAccountExtraAccountMetaList,
   TAccountDestinationBlacklist,
-  TAccountTokenProgram
+  TAccountTokenProgram,
+  TAccountEventAuthority,
+  TAccountProgram
 > {
   // Program address.
   const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
@@ -447,6 +494,8 @@ export function getSeizeInstruction<
       isWritable: false,
     },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -481,6 +530,8 @@ export function getSeizeInstruction<
       getAccountMeta("extraAccountMetaList", accounts.extraAccountMetaList),
       getAccountMeta("destinationBlacklist", accounts.destinationBlacklist),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getSeizeInstructionDataEncoder().encode(
       args as SeizeInstructionDataArgs,
@@ -499,7 +550,9 @@ export function getSeizeInstruction<
     TAccountTransferHookProgram,
     TAccountExtraAccountMetaList,
     TAccountDestinationBlacklist,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -521,6 +574,8 @@ export type ParsedSeizeInstruction<
     extraAccountMetaList: TAccountMetas[9];
     destinationBlacklist: TAccountMetas[10];
     tokenProgram: TAccountMetas[11];
+    eventAuthority: TAccountMetas[12];
+    program: TAccountMetas[13];
   };
   data: SeizeInstructionData;
 };
@@ -533,12 +588,12 @@ export function parseSeizeInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedSeizeInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 12) {
+  if (instruction.accounts.length < 14) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 12,
+        expectedAccountMetas: 14,
       },
     );
   }
@@ -563,6 +618,8 @@ export function parseSeizeInstruction<
       extraAccountMetaList: getNextAccount(),
       destinationBlacklist: getNextAccount(),
       tokenProgram: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getSeizeInstructionDataDecoder().decode(instruction.data),
   };

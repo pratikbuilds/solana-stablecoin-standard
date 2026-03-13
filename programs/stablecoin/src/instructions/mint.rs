@@ -7,6 +7,7 @@ use crate::errors::StablecoinError;
 use crate::events::TokensMinted;
 use crate::state::{MinterQuota, StablecoinConfig};
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct MintTokens<'info> {
     pub authority: Signer<'info>,
@@ -73,7 +74,7 @@ pub fn mint_handler(ctx: Context<MintTokens>, amount: u64) -> Result<()> {
         .checked_add(amount)
         .ok_or(error!(StablecoinError::Overflow))?;
 
-    emit!(TokensMinted {
+    emit_cpi!(TokensMinted {
         mint: ctx.accounts.mint.key(),
         to: ctx.accounts.to.key(),
         authority: ctx.accounts.authority.key(),

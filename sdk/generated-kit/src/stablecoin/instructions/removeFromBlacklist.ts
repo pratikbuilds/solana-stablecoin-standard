@@ -12,6 +12,7 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
@@ -54,6 +55,8 @@ export type RemoveFromBlacklistInstruction<
   TAccountConfig extends string | AccountMeta<string> = string,
   TAccountRoleConfig extends string | AccountMeta<string> = string,
   TAccountBlacklistEntry extends string | AccountMeta<string> = string,
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -72,6 +75,12 @@ export type RemoveFromBlacklistInstruction<
       TAccountBlacklistEntry extends string
         ? WritableAccount<TAccountBlacklistEntry>
         : TAccountBlacklistEntry,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -108,38 +117,50 @@ export function getRemoveFromBlacklistInstructionDataCodec(): FixedSizeCodec<
   );
 }
 
-export type RemoveFromBlacklistInput<
+export type RemoveFromBlacklistAsyncInput<
   TAccountAuthority extends string = string,
   TAccountConfig extends string = string,
   TAccountRoleConfig extends string = string,
   TAccountBlacklistEntry extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config: Address<TAccountConfig>;
   roleConfig: Address<TAccountRoleConfig>;
   blacklistEntry: Address<TAccountBlacklistEntry>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
 };
 
-export function getRemoveFromBlacklistInstruction<
+export async function getRemoveFromBlacklistInstructionAsync<
   TAccountAuthority extends string,
   TAccountConfig extends string,
   TAccountRoleConfig extends string,
   TAccountBlacklistEntry extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
-  input: RemoveFromBlacklistInput<
+  input: RemoveFromBlacklistAsyncInput<
     TAccountAuthority,
     TAccountConfig,
     TAccountRoleConfig,
-    TAccountBlacklistEntry
+    TAccountBlacklistEntry,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
-): RemoveFromBlacklistInstruction<
-  TProgramAddress,
-  TAccountAuthority,
-  TAccountConfig,
-  TAccountRoleConfig,
-  TAccountBlacklistEntry
+): Promise<
+  RemoveFromBlacklistInstruction<
+    TProgramAddress,
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountBlacklistEntry,
+    TAccountEventAuthority,
+    TAccountProgram
+  >
 > {
   // Program address.
   const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
@@ -150,6 +171,106 @@ export function getRemoveFromBlacklistInstruction<
     config: { value: input.config ?? null, isWritable: false },
     roleConfig: { value: input.roleConfig ?? null, isWritable: false },
     blacklistEntry: { value: input.blacklistEntry ?? null, isWritable: true },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
+  };
+  const accounts = originalAccounts as Record<
+    keyof typeof originalAccounts,
+    ResolvedInstructionAccount
+  >;
+
+  // Resolve default values.
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ]),
+        ),
+      ],
+    });
+  }
+
+  const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
+  return Object.freeze({
+    accounts: [
+      getAccountMeta("authority", accounts.authority),
+      getAccountMeta("config", accounts.config),
+      getAccountMeta("roleConfig", accounts.roleConfig),
+      getAccountMeta("blacklistEntry", accounts.blacklistEntry),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
+    ],
+    data: getRemoveFromBlacklistInstructionDataEncoder().encode({}),
+    programAddress,
+  } as RemoveFromBlacklistInstruction<
+    TProgramAddress,
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountBlacklistEntry,
+    TAccountEventAuthority,
+    TAccountProgram
+  >);
+}
+
+export type RemoveFromBlacklistInput<
+  TAccountAuthority extends string = string,
+  TAccountConfig extends string = string,
+  TAccountRoleConfig extends string = string,
+  TAccountBlacklistEntry extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
+> = {
+  authority: TransactionSigner<TAccountAuthority>;
+  config: Address<TAccountConfig>;
+  roleConfig: Address<TAccountRoleConfig>;
+  blacklistEntry: Address<TAccountBlacklistEntry>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
+};
+
+export function getRemoveFromBlacklistInstruction<
+  TAccountAuthority extends string,
+  TAccountConfig extends string,
+  TAccountRoleConfig extends string,
+  TAccountBlacklistEntry extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
+  TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
+>(
+  input: RemoveFromBlacklistInput<
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountBlacklistEntry,
+    TAccountEventAuthority,
+    TAccountProgram
+  >,
+  config?: { programAddress?: TProgramAddress },
+): RemoveFromBlacklistInstruction<
+  TProgramAddress,
+  TAccountAuthority,
+  TAccountConfig,
+  TAccountRoleConfig,
+  TAccountBlacklistEntry,
+  TAccountEventAuthority,
+  TAccountProgram
+> {
+  // Program address.
+  const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
+
+  // Original accounts.
+  const originalAccounts = {
+    authority: { value: input.authority ?? null, isWritable: true },
+    config: { value: input.config ?? null, isWritable: false },
+    roleConfig: { value: input.roleConfig ?? null, isWritable: false },
+    blacklistEntry: { value: input.blacklistEntry ?? null, isWritable: true },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -163,6 +284,8 @@ export function getRemoveFromBlacklistInstruction<
       getAccountMeta("config", accounts.config),
       getAccountMeta("roleConfig", accounts.roleConfig),
       getAccountMeta("blacklistEntry", accounts.blacklistEntry),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getRemoveFromBlacklistInstructionDataEncoder().encode({}),
     programAddress,
@@ -171,7 +294,9 @@ export function getRemoveFromBlacklistInstruction<
     TAccountAuthority,
     TAccountConfig,
     TAccountRoleConfig,
-    TAccountBlacklistEntry
+    TAccountBlacklistEntry,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -185,6 +310,8 @@ export type ParsedRemoveFromBlacklistInstruction<
     config: TAccountMetas[1];
     roleConfig: TAccountMetas[2];
     blacklistEntry: TAccountMetas[3];
+    eventAuthority: TAccountMetas[4];
+    program: TAccountMetas[5];
   };
   data: RemoveFromBlacklistInstructionData;
 };
@@ -197,12 +324,12 @@ export function parseRemoveFromBlacklistInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedRemoveFromBlacklistInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 4) {
+  if (instruction.accounts.length < 6) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 4,
+        expectedAccountMetas: 6,
       },
     );
   }
@@ -219,6 +346,8 @@ export function parseRemoveFromBlacklistInstruction<
       config: getNextAccount(),
       roleConfig: getNextAccount(),
       blacklistEntry: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getRemoveFromBlacklistInstructionDataDecoder().decode(
       instruction.data,

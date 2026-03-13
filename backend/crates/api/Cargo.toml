@@ -7,6 +7,29 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+hex.workspace = true
+hmac.workspace = true
+http.workspace = true
+reqwest.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+tower.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 sss-db = { path = "../db" }
+sss-domain = { path = "../domain" }
+stablecoin-client = { path = "../stablecoin_client" }
+uuid.workspace = true
+base58 = "0.2"
+solana-address = "~2.2"
+solana-client.workspace = true
+solana-instruction = "~3.2"
+solana-sdk.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true

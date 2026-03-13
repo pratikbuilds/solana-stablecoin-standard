@@ -6,6 +6,7 @@ import {
 } from "@solana/web3.js";
 import { STABLECOIN_PROGRAM_ID } from "..";
 import { findConfigPda } from "../pdas/config";
+import { findEventAuthorityPda } from "../pdas/eventAuthority";
 import { findMinterQuotaPda } from "../pdas/minterQuota";
 import { findRoleConfigPda } from "../pdas/roleConfig";
 import {
@@ -25,6 +26,8 @@ export interface UpdateMinterInstructionAccounts {
   minter: PublicKey;
   minterQuota?: PublicKey;
   systemProgram: PublicKey;
+  eventAuthority?: PublicKey;
+  program: PublicKey;
 }
 
 export interface UpdateMinterInstructionArgs {
@@ -82,6 +85,11 @@ export function createUpdateMinterInstruction(
     );
     minterQuota = derived;
   }
+  let eventAuthority = accounts.eventAuthority;
+  if (!eventAuthority) {
+    const [derived] = findEventAuthorityPda(programId);
+    eventAuthority = derived;
+  }
   const keys: AccountMeta[] = [
     { pubkey: accounts.authority, isSigner: true, isWritable: true },
     { pubkey: config, isSigner: false, isWritable: false },
@@ -90,6 +98,8 @@ export function createUpdateMinterInstruction(
     { pubkey: accounts.minter, isSigner: false, isWritable: false },
     { pubkey: minterQuota, isSigner: false, isWritable: true },
     { pubkey: accounts.systemProgram, isSigner: false, isWritable: false },
+    { pubkey: eventAuthority, isSigner: false, isWritable: false },
+    { pubkey: accounts.program, isSigner: false, isWritable: false },
   ];
   const instructionData = Buffer.from(
     UpdateMinterInstructionDataCodec.encode(args),

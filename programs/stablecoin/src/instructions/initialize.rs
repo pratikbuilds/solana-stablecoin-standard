@@ -26,6 +26,7 @@ pub struct InitializeParams {
     pub default_account_frozen: bool,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 #[instruction(params: InitializeParams)]
 pub struct Initialize<'info> {
@@ -238,7 +239,7 @@ pub fn initialize_handler(ctx: Context<Initialize>, params: InitializeParams) ->
         )?;
     }
 
-    emit!(StablecoinInitialized {
+    emit_cpi!(StablecoinInitialized {
         mint: mint_key,
         authority: ctx.accounts.authority.key(),
         preset: if is_sss2 {

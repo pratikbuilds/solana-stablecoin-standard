@@ -7,6 +7,7 @@ use crate::errors::StablecoinError;
 use crate::events::TokensBurned;
 use crate::state::{RoleConfig, StablecoinConfig};
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct BurnTokens<'info> {
     pub authority: Signer<'info>,
@@ -68,7 +69,7 @@ pub fn burn_handler(ctx: Context<BurnTokens>, amount: u64) -> Result<()> {
         .checked_add(amount)
         .ok_or(error!(StablecoinError::Overflow))?;
 
-    emit!(TokensBurned {
+    emit_cpi!(TokensBurned {
         mint: ctx.accounts.mint.key(),
         from: ctx.accounts.from.key(),
         authority: ctx.accounts.authority.key(),

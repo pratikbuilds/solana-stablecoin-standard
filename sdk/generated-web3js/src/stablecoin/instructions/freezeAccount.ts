@@ -6,6 +6,7 @@ import {
 } from "@solana/web3.js";
 import { STABLECOIN_PROGRAM_ID } from "..";
 import { findConfigPda } from "../pdas/config";
+import { findEventAuthorityPda } from "../pdas/eventAuthority";
 import { findRoleConfigPda } from "../pdas/roleConfig";
 
 export interface FreezeAccountInstructionAccounts {
@@ -15,6 +16,8 @@ export interface FreezeAccountInstructionAccounts {
   mint: PublicKey;
   account: PublicKey;
   tokenProgram: PublicKey;
+  eventAuthority?: PublicKey;
+  program: PublicKey;
 }
 
 export function createFreezeAccountInstruction(
@@ -41,6 +44,11 @@ export function createFreezeAccountInstruction(
     );
     roleConfig = derived;
   }
+  let eventAuthority = accounts.eventAuthority;
+  if (!eventAuthority) {
+    const [derived] = findEventAuthorityPda(programId);
+    eventAuthority = derived;
+  }
   const keys: AccountMeta[] = [
     { pubkey: accounts.authority, isSigner: true, isWritable: false },
     { pubkey: config, isSigner: false, isWritable: false },
@@ -48,6 +56,8 @@ export function createFreezeAccountInstruction(
     { pubkey: accounts.mint, isSigner: false, isWritable: true },
     { pubkey: accounts.account, isSigner: false, isWritable: true },
     { pubkey: accounts.tokenProgram, isSigner: false, isWritable: false },
+    { pubkey: eventAuthority, isSigner: false, isWritable: false },
+    { pubkey: accounts.program, isSigner: false, isWritable: false },
   ];
   const data = Buffer.from("fd4b5285a7ee2b82", "hex");
 

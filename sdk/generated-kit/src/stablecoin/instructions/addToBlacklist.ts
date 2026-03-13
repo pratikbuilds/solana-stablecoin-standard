@@ -14,6 +14,7 @@ import {
   fixEncoderSize,
   getBytesDecoder,
   getBytesEncoder,
+  getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
   getU32Decoder,
@@ -63,6 +64,8 @@ export type AddToBlacklistInstruction<
   TAccountBlacklistEntry extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -87,6 +90,12 @@ export type AddToBlacklistInstruction<
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -125,13 +134,15 @@ export function getAddToBlacklistInstructionDataCodec(): Codec<
   );
 }
 
-export type AddToBlacklistInput<
+export type AddToBlacklistAsyncInput<
   TAccountAuthority extends string = string,
   TAccountConfig extends string = string,
   TAccountRoleConfig extends string = string,
   TAccountWallet extends string = string,
   TAccountBlacklistEntry extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config: Address<TAccountConfig>;
@@ -139,35 +150,45 @@ export type AddToBlacklistInput<
   wallet: Address<TAccountWallet>;
   blacklistEntry: Address<TAccountBlacklistEntry>;
   systemProgram?: Address<TAccountSystemProgram>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   reason: AddToBlacklistInstructionDataArgs["reason"];
 };
 
-export function getAddToBlacklistInstruction<
+export async function getAddToBlacklistInstructionAsync<
   TAccountAuthority extends string,
   TAccountConfig extends string,
   TAccountRoleConfig extends string,
   TAccountWallet extends string,
   TAccountBlacklistEntry extends string,
   TAccountSystemProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
-  input: AddToBlacklistInput<
+  input: AddToBlacklistAsyncInput<
     TAccountAuthority,
     TAccountConfig,
     TAccountRoleConfig,
     TAccountWallet,
     TAccountBlacklistEntry,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
-): AddToBlacklistInstruction<
-  TProgramAddress,
-  TAccountAuthority,
-  TAccountConfig,
-  TAccountRoleConfig,
-  TAccountWallet,
-  TAccountBlacklistEntry,
-  TAccountSystemProgram
+): Promise<
+  AddToBlacklistInstruction<
+    TProgramAddress,
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountWallet,
+    TAccountBlacklistEntry,
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
+  >
 > {
   // Program address.
   const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
@@ -180,6 +201,132 @@ export function getAddToBlacklistInstruction<
     wallet: { value: input.wallet ?? null, isWritable: false },
     blacklistEntry: { value: input.blacklistEntry ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
+  };
+  const accounts = originalAccounts as Record<
+    keyof typeof originalAccounts,
+    ResolvedInstructionAccount
+  >;
+
+  // Original args.
+  const args = { ...input };
+
+  // Resolve default values.
+  if (!accounts.systemProgram.value) {
+    accounts.systemProgram.value =
+      "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
+  }
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ]),
+        ),
+      ],
+    });
+  }
+
+  const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
+  return Object.freeze({
+    accounts: [
+      getAccountMeta("authority", accounts.authority),
+      getAccountMeta("config", accounts.config),
+      getAccountMeta("roleConfig", accounts.roleConfig),
+      getAccountMeta("wallet", accounts.wallet),
+      getAccountMeta("blacklistEntry", accounts.blacklistEntry),
+      getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
+    ],
+    data: getAddToBlacklistInstructionDataEncoder().encode(
+      args as AddToBlacklistInstructionDataArgs,
+    ),
+    programAddress,
+  } as AddToBlacklistInstruction<
+    TProgramAddress,
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountWallet,
+    TAccountBlacklistEntry,
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
+  >);
+}
+
+export type AddToBlacklistInput<
+  TAccountAuthority extends string = string,
+  TAccountConfig extends string = string,
+  TAccountRoleConfig extends string = string,
+  TAccountWallet extends string = string,
+  TAccountBlacklistEntry extends string = string,
+  TAccountSystemProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
+> = {
+  authority: TransactionSigner<TAccountAuthority>;
+  config: Address<TAccountConfig>;
+  roleConfig: Address<TAccountRoleConfig>;
+  wallet: Address<TAccountWallet>;
+  blacklistEntry: Address<TAccountBlacklistEntry>;
+  systemProgram?: Address<TAccountSystemProgram>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
+  reason: AddToBlacklistInstructionDataArgs["reason"];
+};
+
+export function getAddToBlacklistInstruction<
+  TAccountAuthority extends string,
+  TAccountConfig extends string,
+  TAccountRoleConfig extends string,
+  TAccountWallet extends string,
+  TAccountBlacklistEntry extends string,
+  TAccountSystemProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
+  TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
+>(
+  input: AddToBlacklistInput<
+    TAccountAuthority,
+    TAccountConfig,
+    TAccountRoleConfig,
+    TAccountWallet,
+    TAccountBlacklistEntry,
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
+  >,
+  config?: { programAddress?: TProgramAddress },
+): AddToBlacklistInstruction<
+  TProgramAddress,
+  TAccountAuthority,
+  TAccountConfig,
+  TAccountRoleConfig,
+  TAccountWallet,
+  TAccountBlacklistEntry,
+  TAccountSystemProgram,
+  TAccountEventAuthority,
+  TAccountProgram
+> {
+  // Program address.
+  const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
+
+  // Original accounts.
+  const originalAccounts = {
+    authority: { value: input.authority ?? null, isWritable: true },
+    config: { value: input.config ?? null, isWritable: false },
+    roleConfig: { value: input.roleConfig ?? null, isWritable: false },
+    wallet: { value: input.wallet ?? null, isWritable: false },
+    blacklistEntry: { value: input.blacklistEntry ?? null, isWritable: true },
+    systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -204,6 +351,8 @@ export function getAddToBlacklistInstruction<
       getAccountMeta("wallet", accounts.wallet),
       getAccountMeta("blacklistEntry", accounts.blacklistEntry),
       getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getAddToBlacklistInstructionDataEncoder().encode(
       args as AddToBlacklistInstructionDataArgs,
@@ -216,7 +365,9 @@ export function getAddToBlacklistInstruction<
     TAccountRoleConfig,
     TAccountWallet,
     TAccountBlacklistEntry,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -232,6 +383,8 @@ export type ParsedAddToBlacklistInstruction<
     wallet: TAccountMetas[3];
     blacklistEntry: TAccountMetas[4];
     systemProgram: TAccountMetas[5];
+    eventAuthority: TAccountMetas[6];
+    program: TAccountMetas[7];
   };
   data: AddToBlacklistInstructionData;
 };
@@ -244,12 +397,12 @@ export function parseAddToBlacklistInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedAddToBlacklistInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 6) {
+  if (instruction.accounts.length < 8) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 6,
+        expectedAccountMetas: 8,
       },
     );
   }
@@ -268,6 +421,8 @@ export function parseAddToBlacklistInstruction<
       wallet: getNextAccount(),
       blacklistEntry: getNextAccount(),
       systemProgram: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getAddToBlacklistInstructionDataDecoder().decode(instruction.data),
   };

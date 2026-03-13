@@ -14,6 +14,7 @@ import {
   getUtf8Codec,
 } from "@solana/codecs";
 import { findConfigPda } from "../pdas/config";
+import { findEventAuthorityPda } from "../pdas/eventAuthority";
 import { findRoleConfigPda } from "../pdas/roleConfig";
 
 export interface InitializeInstructionAccounts {
@@ -26,6 +27,8 @@ export interface InitializeInstructionAccounts {
   tokenProgram: PublicKey;
   systemProgram: PublicKey;
   rent: PublicKey;
+  eventAuthority?: PublicKey;
+  program: PublicKey;
 }
 
 export interface InitializeInstructionArgs {
@@ -73,6 +76,11 @@ export function createInitializeInstruction(
     );
     roleConfig = derived;
   }
+  let eventAuthority = accounts.eventAuthority;
+  if (!eventAuthority) {
+    const [derived] = findEventAuthorityPda(programId);
+    eventAuthority = derived;
+  }
   const keys: AccountMeta[] = [
     { pubkey: accounts.authority, isSigner: true, isWritable: true },
     { pubkey: accounts.mint, isSigner: true, isWritable: true },
@@ -81,6 +89,8 @@ export function createInitializeInstruction(
     { pubkey: accounts.tokenProgram, isSigner: false, isWritable: false },
     { pubkey: accounts.systemProgram, isSigner: false, isWritable: false },
     { pubkey: accounts.rent, isSigner: false, isWritable: false },
+    { pubkey: eventAuthority, isSigner: false, isWritable: false },
+    { pubkey: accounts.program, isSigner: false, isWritable: false },
     ...(accounts.extraAccountMetaList
       ? [
           {

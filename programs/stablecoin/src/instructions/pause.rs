@@ -6,6 +6,7 @@ use crate::errors::StablecoinError;
 use crate::events::PauseChanged;
 use crate::state::{RoleConfig, StablecoinConfig};
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct PauseOps<'info> {
     pub authority: Signer<'info>,
@@ -22,6 +23,7 @@ pub struct PauseOps<'info> {
     pub role_config: Account<'info, RoleConfig>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct UnpauseOps<'info> {
     pub authority: Signer<'info>,
@@ -50,7 +52,7 @@ pub fn pause_handler(ctx: Context<PauseOps>) -> Result<()> {
     ctx.accounts.config.last_changed_by = ctx.accounts.authority.key();
     ctx.accounts.config.last_changed_at = Clock::get()?.unix_timestamp;
 
-    emit!(PauseChanged {
+    emit_cpi!(PauseChanged {
         mint: ctx.accounts.config.mint,
         paused: true,
         authority: ctx.accounts.authority.key(),
@@ -71,7 +73,7 @@ pub fn unpause_handler(ctx: Context<UnpauseOps>) -> Result<()> {
     ctx.accounts.config.last_changed_by = ctx.accounts.authority.key();
     ctx.accounts.config.last_changed_at = Clock::get()?.unix_timestamp;
 
-    emit!(PauseChanged {
+    emit_cpi!(PauseChanged {
         mint: ctx.accounts.config.mint,
         paused: false,
         authority: ctx.accounts.authority.key(),

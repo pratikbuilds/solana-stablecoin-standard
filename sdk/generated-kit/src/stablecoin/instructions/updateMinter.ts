@@ -66,6 +66,8 @@ export type UpdateMinterInstruction<
   TAccountMinterQuota extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -93,6 +95,12 @@ export type UpdateMinterInstruction<
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -149,6 +157,8 @@ export type UpdateMinterAsyncInput<
   TAccountMinter extends string = string,
   TAccountMinterQuota extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config?: Address<TAccountConfig>;
@@ -157,6 +167,8 @@ export type UpdateMinterAsyncInput<
   minter: Address<TAccountMinter>;
   minterQuota?: Address<TAccountMinterQuota>;
   systemProgram?: Address<TAccountSystemProgram>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   minterArg: UpdateMinterInstructionDataArgs["minter"];
   quota: UpdateMinterInstructionDataArgs["quota"];
   active: UpdateMinterInstructionDataArgs["active"];
@@ -170,6 +182,8 @@ export async function getUpdateMinterInstructionAsync<
   TAccountMinter extends string,
   TAccountMinterQuota extends string,
   TAccountSystemProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
   input: UpdateMinterAsyncInput<
@@ -179,7 +193,9 @@ export async function getUpdateMinterInstructionAsync<
     TAccountMint,
     TAccountMinter,
     TAccountMinterQuota,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
@@ -191,7 +207,9 @@ export async function getUpdateMinterInstructionAsync<
     TAccountMint,
     TAccountMinter,
     TAccountMinterQuota,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >
 > {
   // Program address.
@@ -206,6 +224,8 @@ export async function getUpdateMinterInstructionAsync<
     minter: { value: input.minter ?? null, isWritable: false },
     minterQuota: { value: input.minterQuota ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -261,6 +281,19 @@ export async function getUpdateMinterInstructionAsync<
     accounts.systemProgram.value =
       "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
   }
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ]),
+        ),
+      ],
+    });
+  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
@@ -272,6 +305,8 @@ export async function getUpdateMinterInstructionAsync<
       getAccountMeta("minter", accounts.minter),
       getAccountMeta("minterQuota", accounts.minterQuota),
       getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getUpdateMinterInstructionDataEncoder().encode(
       args as UpdateMinterInstructionDataArgs,
@@ -285,7 +320,9 @@ export async function getUpdateMinterInstructionAsync<
     TAccountMint,
     TAccountMinter,
     TAccountMinterQuota,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -297,6 +334,8 @@ export type UpdateMinterInput<
   TAccountMinter extends string = string,
   TAccountMinterQuota extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config: Address<TAccountConfig>;
@@ -305,6 +344,8 @@ export type UpdateMinterInput<
   minter: Address<TAccountMinter>;
   minterQuota: Address<TAccountMinterQuota>;
   systemProgram?: Address<TAccountSystemProgram>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
   minterArg: UpdateMinterInstructionDataArgs["minter"];
   quota: UpdateMinterInstructionDataArgs["quota"];
   active: UpdateMinterInstructionDataArgs["active"];
@@ -318,6 +359,8 @@ export function getUpdateMinterInstruction<
   TAccountMinter extends string,
   TAccountMinterQuota extends string,
   TAccountSystemProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
   input: UpdateMinterInput<
@@ -327,7 +370,9 @@ export function getUpdateMinterInstruction<
     TAccountMint,
     TAccountMinter,
     TAccountMinterQuota,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): UpdateMinterInstruction<
@@ -338,7 +383,9 @@ export function getUpdateMinterInstruction<
   TAccountMint,
   TAccountMinter,
   TAccountMinterQuota,
-  TAccountSystemProgram
+  TAccountSystemProgram,
+  TAccountEventAuthority,
+  TAccountProgram
 > {
   // Program address.
   const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
@@ -352,6 +399,8 @@ export function getUpdateMinterInstruction<
     minter: { value: input.minter ?? null, isWritable: false },
     minterQuota: { value: input.minterQuota ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -377,6 +426,8 @@ export function getUpdateMinterInstruction<
       getAccountMeta("minter", accounts.minter),
       getAccountMeta("minterQuota", accounts.minterQuota),
       getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getUpdateMinterInstructionDataEncoder().encode(
       args as UpdateMinterInstructionDataArgs,
@@ -390,7 +441,9 @@ export function getUpdateMinterInstruction<
     TAccountMint,
     TAccountMinter,
     TAccountMinterQuota,
-    TAccountSystemProgram
+    TAccountSystemProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -407,6 +460,8 @@ export type ParsedUpdateMinterInstruction<
     minter: TAccountMetas[4];
     minterQuota: TAccountMetas[5];
     systemProgram: TAccountMetas[6];
+    eventAuthority: TAccountMetas[7];
+    program: TAccountMetas[8];
   };
   data: UpdateMinterInstructionData;
 };
@@ -419,12 +474,12 @@ export function parseUpdateMinterInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedUpdateMinterInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 7) {
+  if (instruction.accounts.length < 9) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 7,
+        expectedAccountMetas: 9,
       },
     );
   }
@@ -444,6 +499,8 @@ export function parseUpdateMinterInstruction<
       minter: getNextAccount(),
       minterQuota: getNextAccount(),
       systemProgram: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getUpdateMinterInstructionDataDecoder().decode(instruction.data),
   };

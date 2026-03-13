@@ -6,6 +6,7 @@ import {
 } from "@solana/web3.js";
 import { STABLECOIN_PROGRAM_ID } from "..";
 import { findConfigPda } from "../pdas/config";
+import { findEventAuthorityPda } from "../pdas/eventAuthority";
 import { findRoleConfigPda } from "../pdas/roleConfig";
 import { getStructCodec, getU64Codec } from "@solana/codecs";
 
@@ -16,6 +17,8 @@ export interface BurnInstructionAccounts {
   mint: PublicKey;
   from: PublicKey;
   tokenProgram: PublicKey;
+  eventAuthority?: PublicKey;
+  program: PublicKey;
 }
 
 export interface BurnInstructionArgs {
@@ -49,6 +52,11 @@ export function createBurnInstruction(
     );
     roleConfig = derived;
   }
+  let eventAuthority = accounts.eventAuthority;
+  if (!eventAuthority) {
+    const [derived] = findEventAuthorityPda(programId);
+    eventAuthority = derived;
+  }
   const keys: AccountMeta[] = [
     { pubkey: accounts.authority, isSigner: true, isWritable: false },
     { pubkey: config, isSigner: false, isWritable: true },
@@ -56,6 +64,8 @@ export function createBurnInstruction(
     { pubkey: accounts.mint, isSigner: false, isWritable: true },
     { pubkey: accounts.from, isSigner: false, isWritable: true },
     { pubkey: accounts.tokenProgram, isSigner: false, isWritable: false },
+    { pubkey: eventAuthority, isSigner: false, isWritable: false },
+    { pubkey: accounts.program, isSigner: false, isWritable: false },
   ];
   const instructionData = Buffer.from(BurnInstructionDataCodec.encode(args));
   const discriminator = Buffer.from("746e1d386bdb2a5d", "hex");

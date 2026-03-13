@@ -9,6 +9,7 @@ use crate::errors::StablecoinError;
 use crate::events::{AccountFrozen, AccountThawed};
 use crate::state::{RoleConfig, StablecoinConfig};
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct FreezeTokenAccount<'info> {
     pub authority: Signer<'info>,
@@ -33,6 +34,7 @@ pub struct FreezeTokenAccount<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct ThawTokenAccount<'info> {
     pub authority: Signer<'info>,
@@ -79,7 +81,7 @@ pub fn freeze_handler(ctx: Context<FreezeTokenAccount>) -> Result<()> {
         signer_seeds,
     ))?;
 
-    emit!(AccountFrozen {
+    emit_cpi!(AccountFrozen {
         mint: ctx.accounts.mint.key(),
         account: ctx.accounts.account.key(),
         authority: ctx.accounts.authority.key(),
@@ -110,7 +112,7 @@ pub fn thaw_handler(ctx: Context<ThawTokenAccount>) -> Result<()> {
         signer_seeds,
     ))?;
 
-    emit!(AccountThawed {
+    emit_cpi!(AccountThawed {
         mint: ctx.accounts.mint.key(),
         account: ctx.accounts.account.key(),
         authority: ctx.accounts.authority.key(),

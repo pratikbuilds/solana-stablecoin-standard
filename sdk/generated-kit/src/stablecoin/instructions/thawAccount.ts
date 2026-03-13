@@ -60,6 +60,8 @@ export type ThawAccountInstruction<
   TAccountAccount extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -84,6 +86,12 @@ export type ThawAccountInstruction<
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -122,6 +130,8 @@ export type ThawAccountAsyncInput<
   TAccountMint extends string = string,
   TAccountAccount extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config?: Address<TAccountConfig>;
@@ -129,6 +139,8 @@ export type ThawAccountAsyncInput<
   mint: Address<TAccountMint>;
   account: Address<TAccountAccount>;
   tokenProgram?: Address<TAccountTokenProgram>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
 };
 
 export async function getThawAccountInstructionAsync<
@@ -138,6 +150,8 @@ export async function getThawAccountInstructionAsync<
   TAccountMint extends string,
   TAccountAccount extends string,
   TAccountTokenProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
   input: ThawAccountAsyncInput<
@@ -146,7 +160,9 @@ export async function getThawAccountInstructionAsync<
     TAccountRoleConfig,
     TAccountMint,
     TAccountAccount,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
@@ -157,7 +173,9 @@ export async function getThawAccountInstructionAsync<
     TAccountRoleConfig,
     TAccountMint,
     TAccountAccount,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >
 > {
   // Program address.
@@ -171,6 +189,8 @@ export async function getThawAccountInstructionAsync<
     mint: { value: input.mint ?? null, isWritable: true },
     account: { value: input.account ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -204,6 +224,19 @@ export async function getThawAccountInstructionAsync<
     accounts.tokenProgram.value =
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
   }
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ]),
+        ),
+      ],
+    });
+  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
@@ -214,6 +247,8 @@ export async function getThawAccountInstructionAsync<
       getAccountMeta("mint", accounts.mint),
       getAccountMeta("account", accounts.account),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getThawAccountInstructionDataEncoder().encode({}),
     programAddress,
@@ -224,7 +259,9 @@ export async function getThawAccountInstructionAsync<
     TAccountRoleConfig,
     TAccountMint,
     TAccountAccount,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -235,6 +272,8 @@ export type ThawAccountInput<
   TAccountMint extends string = string,
   TAccountAccount extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config: Address<TAccountConfig>;
@@ -242,6 +281,8 @@ export type ThawAccountInput<
   mint: Address<TAccountMint>;
   account: Address<TAccountAccount>;
   tokenProgram?: Address<TAccountTokenProgram>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
 };
 
 export function getThawAccountInstruction<
@@ -251,6 +292,8 @@ export function getThawAccountInstruction<
   TAccountMint extends string,
   TAccountAccount extends string,
   TAccountTokenProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
   input: ThawAccountInput<
@@ -259,7 +302,9 @@ export function getThawAccountInstruction<
     TAccountRoleConfig,
     TAccountMint,
     TAccountAccount,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): ThawAccountInstruction<
@@ -269,7 +314,9 @@ export function getThawAccountInstruction<
   TAccountRoleConfig,
   TAccountMint,
   TAccountAccount,
-  TAccountTokenProgram
+  TAccountTokenProgram,
+  TAccountEventAuthority,
+  TAccountProgram
 > {
   // Program address.
   const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
@@ -282,6 +329,8 @@ export function getThawAccountInstruction<
     mint: { value: input.mint ?? null, isWritable: true },
     account: { value: input.account ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -303,6 +352,8 @@ export function getThawAccountInstruction<
       getAccountMeta("mint", accounts.mint),
       getAccountMeta("account", accounts.account),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getThawAccountInstructionDataEncoder().encode({}),
     programAddress,
@@ -313,7 +364,9 @@ export function getThawAccountInstruction<
     TAccountRoleConfig,
     TAccountMint,
     TAccountAccount,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -329,6 +382,8 @@ export type ParsedThawAccountInstruction<
     mint: TAccountMetas[3];
     account: TAccountMetas[4];
     tokenProgram: TAccountMetas[5];
+    eventAuthority: TAccountMetas[6];
+    program: TAccountMetas[7];
   };
   data: ThawAccountInstructionData;
 };
@@ -341,12 +396,12 @@ export function parseThawAccountInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedThawAccountInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 6) {
+  if (instruction.accounts.length < 8) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 6,
+        expectedAccountMetas: 8,
       },
     );
   }
@@ -365,6 +420,8 @@ export function parseThawAccountInstruction<
       mint: getNextAccount(),
       account: getNextAccount(),
       tokenProgram: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getThawAccountInstructionDataDecoder().decode(instruction.data),
   };

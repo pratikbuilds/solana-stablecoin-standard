@@ -7,6 +7,26 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+carbon-core.workspace = true
+carbon-rpc-block-crawler-datasource.workspace = true
+carbon-rpc-block-subscribe-datasource.workspace = true
+chrono.workspace = true
+futures.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+solana-client.workspace = true
+solana-sdk.workspace = true
+solana-transaction-status.workspace = true
+solana-transaction-status-client-types.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+carbon-stablecoin-decoder = { path = "../stablecoin_decoder" }
 sss-db = { path = "../db" }
+sss-domain = { path = "../domain" }
+transfer_hook = { package = "transfer-hook", path = "../../../programs/transfer-hook" }
 
+[dev-dependencies]
+tempfile.workspace = true

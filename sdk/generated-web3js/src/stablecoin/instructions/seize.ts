@@ -6,6 +6,7 @@ import {
 } from "@solana/web3.js";
 import { STABLECOIN_PROGRAM_ID } from "..";
 import { findConfigPda } from "../pdas/config";
+import { findEventAuthorityPda } from "../pdas/eventAuthority";
 import { findExtraAccountMetaListPda } from "../pdas/extraAccountMetaList";
 import { findRoleConfigPda } from "../pdas/roleConfig";
 import { getStructCodec, getU64Codec } from "@solana/codecs";
@@ -23,6 +24,8 @@ export interface SeizeInstructionAccounts {
   extraAccountMetaList?: PublicKey;
   destinationBlacklist: PublicKey;
   tokenProgram: PublicKey;
+  eventAuthority?: PublicKey;
+  program: PublicKey;
 }
 
 export interface SeizeInstructionArgs {
@@ -66,6 +69,11 @@ export function createSeizeInstruction(
     );
     extraAccountMetaList = derived;
   }
+  let eventAuthority = accounts.eventAuthority;
+  if (!eventAuthority) {
+    const [derived] = findEventAuthorityPda(programId);
+    eventAuthority = derived;
+  }
   const keys: AccountMeta[] = [
     { pubkey: accounts.authority, isSigner: true, isWritable: false },
     { pubkey: config, isSigner: false, isWritable: true },
@@ -87,6 +95,8 @@ export function createSeizeInstruction(
       isWritable: false,
     },
     { pubkey: accounts.tokenProgram, isSigner: false, isWritable: false },
+    { pubkey: eventAuthority, isSigner: false, isWritable: false },
+    { pubkey: accounts.program, isSigner: false, isWritable: false },
   ];
   const instructionData = Buffer.from(SeizeInstructionDataCodec.encode(args));
   const discriminator = Buffer.from("819f8f1fa1e0f154", "hex");

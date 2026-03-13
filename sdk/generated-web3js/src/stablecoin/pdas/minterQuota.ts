@@ -3,7 +3,7 @@ import { STABLECOIN_PROGRAM_ID } from "..";
 
 export interface MinterQuotaPdaSeeds {
   mint: PublicKey;
-  minter: PublicKey;
+  authority: PublicKey;
 }
 
 export function findMinterQuotaPda(
@@ -13,7 +13,7 @@ export function findMinterQuotaPda(
   const seedsBuffer: Buffer[] = [
     Buffer.from("minter", "utf8"),
     seeds.mint.toBuffer(),
-    seeds.minter.toBuffer(),
+    seeds.authority.toBuffer(),
   ];
   return PublicKey.findProgramAddressSync(seedsBuffer, programId);
 }

@@ -13,6 +13,7 @@ use crate::errors::StablecoinError;
 use crate::events::{AddressBlacklisted, AddressUnblacklisted, TokensSeized};
 use crate::state::{BlacklistEntry, RoleConfig, StablecoinConfig};
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct AddToBlacklist<'info> {
     #[account(mut)]
@@ -40,6 +41,7 @@ pub struct AddToBlacklist<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct RemoveFromBlacklist<'info> {
     #[account(mut)]
@@ -63,6 +65,7 @@ pub struct RemoveFromBlacklist<'info> {
     pub blacklist_entry: Account<'info, BlacklistEntry>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct SeizeTokens<'info> {
     pub authority: Signer<'info>,
@@ -141,7 +144,7 @@ pub fn add_to_blacklist_handler(ctx: Context<AddToBlacklist>, reason: String) ->
     blacklist_entry.blacklisted_at = Clock::get()?.unix_timestamp;
     blacklist_entry.bump = ctx.bumps.blacklist_entry;
 
-    emit!(AddressBlacklisted {
+    emit_cpi!(AddressBlacklisted {
         mint: ctx.accounts.config.mint,
         wallet: ctx.accounts.wallet.key(),
         authority: ctx.accounts.authority.key(),
@@ -163,7 +166,7 @@ pub fn remove_from_blacklist_handler(ctx: Context<RemoveFromBlacklist>) -> Resul
         StablecoinError::NotBlacklister
     );
 
-    emit!(AddressUnblacklisted {
+    emit_cpi!(AddressUnblacklisted {
         mint: ctx.accounts.config.mint,
         wallet: ctx.accounts.blacklist_entry.wallet,
         authority: ctx.accounts.authority.key(),
@@ -274,7 +277,7 @@ pub fn seize_handler(ctx: Context<SeizeTokens>, amount: u64) -> Result<()> {
         signer_seeds,
     ))?;
 
-    emit!(TokensSeized {
+    emit_cpi!(TokensSeized {
         mint: ctx.accounts.mint.key(),
         from: ctx.accounts.from.key(),
         to: ctx.accounts.to.key(),

@@ -60,6 +60,8 @@ export type FreezeAccountInstruction<
   TAccountAccount extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TAccountEventAuthority extends string | AccountMeta<string> = string,
+  TAccountProgram extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -84,6 +86,12 @@ export type FreezeAccountInstruction<
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
+      TAccountEventAuthority extends string
+        ? ReadonlyAccount<TAccountEventAuthority>
+        : TAccountEventAuthority,
+      TAccountProgram extends string
+        ? ReadonlyAccount<TAccountProgram>
+        : TAccountProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -124,6 +132,8 @@ export type FreezeAccountAsyncInput<
   TAccountMint extends string = string,
   TAccountAccount extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config?: Address<TAccountConfig>;
@@ -131,6 +141,8 @@ export type FreezeAccountAsyncInput<
   mint: Address<TAccountMint>;
   account: Address<TAccountAccount>;
   tokenProgram?: Address<TAccountTokenProgram>;
+  eventAuthority?: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
 };
 
 export async function getFreezeAccountInstructionAsync<
@@ -140,6 +152,8 @@ export async function getFreezeAccountInstructionAsync<
   TAccountMint extends string,
   TAccountAccount extends string,
   TAccountTokenProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
   input: FreezeAccountAsyncInput<
@@ -148,7 +162,9 @@ export async function getFreezeAccountInstructionAsync<
     TAccountRoleConfig,
     TAccountMint,
     TAccountAccount,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): Promise<
@@ -159,7 +175,9 @@ export async function getFreezeAccountInstructionAsync<
     TAccountRoleConfig,
     TAccountMint,
     TAccountAccount,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >
 > {
   // Program address.
@@ -173,6 +191,8 @@ export async function getFreezeAccountInstructionAsync<
     mint: { value: input.mint ?? null, isWritable: true },
     account: { value: input.account ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -206,6 +226,19 @@ export async function getFreezeAccountInstructionAsync<
     accounts.tokenProgram.value =
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
   }
+  if (!accounts.eventAuthority.value) {
+    accounts.eventAuthority.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([
+            95, 95, 101, 118, 101, 110, 116, 95, 97, 117, 116, 104, 111, 114,
+            105, 116, 121,
+          ]),
+        ),
+      ],
+    });
+  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
@@ -216,6 +249,8 @@ export async function getFreezeAccountInstructionAsync<
       getAccountMeta("mint", accounts.mint),
       getAccountMeta("account", accounts.account),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getFreezeAccountInstructionDataEncoder().encode({}),
     programAddress,
@@ -226,7 +261,9 @@ export async function getFreezeAccountInstructionAsync<
     TAccountRoleConfig,
     TAccountMint,
     TAccountAccount,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -237,6 +274,8 @@ export type FreezeAccountInput<
   TAccountMint extends string = string,
   TAccountAccount extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountEventAuthority extends string = string,
+  TAccountProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   config: Address<TAccountConfig>;
@@ -244,6 +283,8 @@ export type FreezeAccountInput<
   mint: Address<TAccountMint>;
   account: Address<TAccountAccount>;
   tokenProgram?: Address<TAccountTokenProgram>;
+  eventAuthority: Address<TAccountEventAuthority>;
+  program: Address<TAccountProgram>;
 };
 
 export function getFreezeAccountInstruction<
@@ -253,6 +294,8 @@ export function getFreezeAccountInstruction<
   TAccountMint extends string,
   TAccountAccount extends string,
   TAccountTokenProgram extends string,
+  TAccountEventAuthority extends string,
+  TAccountProgram extends string,
   TProgramAddress extends Address = typeof STABLECOIN_PROGRAM_ADDRESS,
 >(
   input: FreezeAccountInput<
@@ -261,7 +304,9 @@ export function getFreezeAccountInstruction<
     TAccountRoleConfig,
     TAccountMint,
     TAccountAccount,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >,
   config?: { programAddress?: TProgramAddress },
 ): FreezeAccountInstruction<
@@ -271,7 +316,9 @@ export function getFreezeAccountInstruction<
   TAccountRoleConfig,
   TAccountMint,
   TAccountAccount,
-  TAccountTokenProgram
+  TAccountTokenProgram,
+  TAccountEventAuthority,
+  TAccountProgram
 > {
   // Program address.
   const programAddress = config?.programAddress ?? STABLECOIN_PROGRAM_ADDRESS;
@@ -284,6 +331,8 @@ export function getFreezeAccountInstruction<
     mint: { value: input.mint ?? null, isWritable: true },
     account: { value: input.account ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    eventAuthority: { value: input.eventAuthority ?? null, isWritable: false },
+    program: { value: input.program ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -305,6 +354,8 @@ export function getFreezeAccountInstruction<
       getAccountMeta("mint", accounts.mint),
       getAccountMeta("account", accounts.account),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("eventAuthority", accounts.eventAuthority),
+      getAccountMeta("program", accounts.program),
     ],
     data: getFreezeAccountInstructionDataEncoder().encode({}),
     programAddress,
@@ -315,7 +366,9 @@ export function getFreezeAccountInstruction<
     TAccountRoleConfig,
     TAccountMint,
     TAccountAccount,
-    TAccountTokenProgram
+    TAccountTokenProgram,
+    TAccountEventAuthority,
+    TAccountProgram
   >);
 }
 
@@ -331,6 +384,8 @@ export type ParsedFreezeAccountInstruction<
     mint: TAccountMetas[3];
     account: TAccountMetas[4];
     tokenProgram: TAccountMetas[5];
+    eventAuthority: TAccountMetas[6];
+    program: TAccountMetas[7];
   };
   data: FreezeAccountInstructionData;
 };
@@ -343,12 +398,12 @@ export function parseFreezeAccountInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedFreezeAccountInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 6) {
+  if (instruction.accounts.length < 8) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 6,
+        expectedAccountMetas: 8,
       },
     );
   }
@@ -367,6 +422,8 @@ export function parseFreezeAccountInstruction<
       mint: getNextAccount(),
       account: getNextAccount(),
       tokenProgram: getNextAccount(),
+      eventAuthority: getNextAccount(),
+      program: getNextAccount(),
     },
     data: getFreezeAccountInstructionDataDecoder().decode(instruction.data),
   };

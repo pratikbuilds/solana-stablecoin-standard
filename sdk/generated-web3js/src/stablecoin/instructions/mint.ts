@@ -6,6 +6,7 @@ import {
 } from "@solana/web3.js";
 import { STABLECOIN_PROGRAM_ID } from "..";
 import { findConfigPda } from "../pdas/config";
+import { findEventAuthorityPda } from "../pdas/eventAuthority";
 import { findMinterQuotaPda } from "../pdas/minterQuota";
 import { getStructCodec, getU64Codec } from "@solana/codecs";
 
@@ -16,6 +17,8 @@ export interface MintInstructionAccounts {
   mint: PublicKey;
   to: PublicKey;
   tokenProgram: PublicKey;
+  eventAuthority?: PublicKey;
+  program: PublicKey;
 }
 
 export interface MintInstructionArgs {
@@ -44,11 +47,16 @@ export function createMintInstruction(
     const [derived] = findMinterQuotaPda(
       {
         mint: accounts.mint,
-        minter: accounts.authority,
+        authority: accounts.authority,
       },
       programId,
     );
     minterQuota = derived;
+  }
+  let eventAuthority = accounts.eventAuthority;
+  if (!eventAuthority) {
+    const [derived] = findEventAuthorityPda(programId);
+    eventAuthority = derived;
   }
   const keys: AccountMeta[] = [
     { pubkey: accounts.authority, isSigner: true, isWritable: false },
@@ -57,6 +65,8 @@ export function createMintInstruction(
     { pubkey: accounts.mint, isSigner: false, isWritable: true },
     { pubkey: accounts.to, isSigner: false, isWritable: true },
     { pubkey: accounts.tokenProgram, isSigner: false, isWritable: false },
+    { pubkey: eventAuthority, isSigner: false, isWritable: false },
+    { pubkey: accounts.program, isSigner: false, isWritable: false },
   ];
   const instructionData = Buffer.from(MintInstructionDataCodec.encode(args));
   const discriminator = Buffer.from("3339e12fb69289a6", "hex");

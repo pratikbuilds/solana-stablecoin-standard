@@ -12,6 +12,7 @@ import { loadPrograms } from "./cluster";
 import {
   blacklistPda,
   configPda,
+  eventAuthorityPda,
   extraAccountMetaListPda,
   minterQuotaPda,
   rolesPda,
@@ -40,6 +41,13 @@ export interface PresetContext {
 
 const DEFAULT_DECIMALS = 6;
 const DEFAULT_MINTER_QUOTA = new anchor.BN("1000000000000");
+
+function stablecoinEventAccounts(programId: PublicKey) {
+  return {
+    eventAuthority: eventAuthorityPda(programId),
+    program: programId,
+  };
+}
 
 async function initializePreset(
   preset: "SSS-1" | "SSS-2",
@@ -90,6 +98,7 @@ async function initializePreset(
       mint: mint.publicKey,
       config,
       roleConfig,
+      ...stablecoinEventAccounts(programs.stablecoinProgramId),
       tokenProgram: TOKEN_2022_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
       rent: SYSVAR_RENT_PUBKEY,
@@ -145,6 +154,7 @@ async function initializePreset(
       mint: mint.publicKey,
       minter: authority.publicKey,
       minterQuota: quotaPda,
+      ...stablecoinEventAccounts(programs.stablecoinProgramId),
       systemProgram: SystemProgram.programId,
     })
     .signers([authority])
@@ -199,6 +209,7 @@ export async function mintToUser(
       minterQuota: ctx.minterQuotaPda,
       mint: ctx.mint.publicKey,
       to: destination === "userA" ? ctx.userAAta : ctx.userBAta,
+      ...stablecoinEventAccounts(ctx.programs.stablecoinProgramId),
       tokenProgram: TOKEN_2022_PROGRAM_ID,
     })
     .signers([ctx.authority])
@@ -258,6 +269,7 @@ export async function freezeAccount(
       roleConfig: ctx.roleConfigPda,
       mint: ctx.mint.publicKey,
       account,
+      ...stablecoinEventAccounts(ctx.programs.stablecoinProgramId),
       tokenProgram: TOKEN_2022_PROGRAM_ID,
     })
     .signers([ctx.authority])
@@ -276,6 +288,7 @@ export async function thawAccount(
       roleConfig: ctx.roleConfigPda,
       mint: ctx.mint.publicKey,
       account,
+      ...stablecoinEventAccounts(ctx.programs.stablecoinProgramId),
       tokenProgram: TOKEN_2022_PROGRAM_ID,
     })
     .signers([ctx.authority])
@@ -294,6 +307,7 @@ export async function blacklistUser(
       roleConfig: ctx.roleConfigPda,
       wallet: ctx.userB.publicKey,
       blacklistEntry: ctx.blacklistPda,
+      ...stablecoinEventAccounts(ctx.programs.stablecoinProgramId),
       systemProgram: SystemProgram.programId,
     })
     .signers([ctx.authority])
@@ -322,6 +336,7 @@ export async function seizeFromBlacklistedAccount(
         ctx.mint.publicKey,
         ctx.authority.publicKey,
       ),
+      ...stablecoinEventAccounts(ctx.programs.stablecoinProgramId),
       tokenProgram: TOKEN_2022_PROGRAM_ID,
     })
     .signers([ctx.authority])
@@ -335,6 +350,7 @@ export async function pauseMint(ctx: PresetContext): Promise<string> {
       authority: ctx.authority.publicKey,
       config: ctx.configPda,
       roleConfig: ctx.roleConfigPda,
+      ...stablecoinEventAccounts(ctx.programs.stablecoinProgramId),
     })
     .signers([ctx.authority])
     .rpc();

@@ -46,19 +46,19 @@ import {
   type StablecoinConfigArgs,
 } from "../accounts";
 import {
-  getAddToBlacklistInstruction,
+  getAddToBlacklistInstructionAsync,
   getBurnInstructionAsync,
   getFreezeAccountInstructionAsync,
   getInitializeInstructionAsync,
   getMintInstructionAsync,
-  getPauseInstruction,
-  getRemoveFromBlacklistInstruction,
+  getPauseInstructionAsync,
+  getRemoveFromBlacklistInstructionAsync,
   getSeizeInstructionAsync,
   getThawAccountInstructionAsync,
-  getTransferAuthorityInstruction,
-  getUnpauseInstruction,
+  getTransferAuthorityInstructionAsync,
+  getUnpauseInstructionAsync,
   getUpdateMinterInstructionAsync,
-  getUpdateRolesInstruction,
+  getUpdateRolesInstructionAsync,
   parseAddToBlacklistInstruction,
   parseBurnInstruction,
   parseFreezeAccountInstruction,
@@ -72,7 +72,7 @@ import {
   parseUnpauseInstruction,
   parseUpdateMinterInstruction,
   parseUpdateRolesInstruction,
-  type AddToBlacklistInput,
+  type AddToBlacklistAsyncInput,
   type BurnAsyncInput,
   type FreezeAccountAsyncInput,
   type InitializeAsyncInput,
@@ -90,14 +90,14 @@ import {
   type ParsedUnpauseInstruction,
   type ParsedUpdateMinterInstruction,
   type ParsedUpdateRolesInstruction,
-  type PauseInput,
-  type RemoveFromBlacklistInput,
+  type PauseAsyncInput,
+  type RemoveFromBlacklistAsyncInput,
   type SeizeAsyncInput,
   type ThawAccountAsyncInput,
-  type TransferAuthorityInput,
-  type UnpauseInput,
+  type TransferAuthorityAsyncInput,
+  type UnpauseAsyncInput,
   type UpdateMinterAsyncInput,
-  type UpdateRolesInput,
+  type UpdateRolesAsyncInput,
 } from "../instructions";
 
 export const STABLECOIN_PROGRAM_ADDRESS =
@@ -501,8 +501,8 @@ export type StablecoinPluginAccounts = {
 
 export type StablecoinPluginInstructions = {
   addToBlacklist: (
-    input: AddToBlacklistInput,
-  ) => ReturnType<typeof getAddToBlacklistInstruction> &
+    input: AddToBlacklistAsyncInput,
+  ) => ReturnType<typeof getAddToBlacklistInstructionAsync> &
     SelfPlanAndSendFunctions;
   burn: (
     input: BurnAsyncInput,
@@ -519,11 +519,11 @@ export type StablecoinPluginInstructions = {
     input: MintAsyncInput,
   ) => ReturnType<typeof getMintInstructionAsync> & SelfPlanAndSendFunctions;
   pause: (
-    input: PauseInput,
-  ) => ReturnType<typeof getPauseInstruction> & SelfPlanAndSendFunctions;
+    input: PauseAsyncInput,
+  ) => ReturnType<typeof getPauseInstructionAsync> & SelfPlanAndSendFunctions;
   removeFromBlacklist: (
-    input: RemoveFromBlacklistInput,
-  ) => ReturnType<typeof getRemoveFromBlacklistInstruction> &
+    input: RemoveFromBlacklistAsyncInput,
+  ) => ReturnType<typeof getRemoveFromBlacklistInstructionAsync> &
     SelfPlanAndSendFunctions;
   seize: (
     input: SeizeAsyncInput,
@@ -533,19 +533,20 @@ export type StablecoinPluginInstructions = {
   ) => ReturnType<typeof getThawAccountInstructionAsync> &
     SelfPlanAndSendFunctions;
   transferAuthority: (
-    input: TransferAuthorityInput,
-  ) => ReturnType<typeof getTransferAuthorityInstruction> &
+    input: TransferAuthorityAsyncInput,
+  ) => ReturnType<typeof getTransferAuthorityInstructionAsync> &
     SelfPlanAndSendFunctions;
   unpause: (
-    input: UnpauseInput,
-  ) => ReturnType<typeof getUnpauseInstruction> & SelfPlanAndSendFunctions;
+    input: UnpauseAsyncInput,
+  ) => ReturnType<typeof getUnpauseInstructionAsync> & SelfPlanAndSendFunctions;
   updateMinter: (
     input: UpdateMinterAsyncInput,
   ) => ReturnType<typeof getUpdateMinterInstructionAsync> &
     SelfPlanAndSendFunctions;
   updateRoles: (
-    input: UpdateRolesInput,
-  ) => ReturnType<typeof getUpdateRolesInstruction> & SelfPlanAndSendFunctions;
+    input: UpdateRolesAsyncInput,
+  ) => ReturnType<typeof getUpdateRolesInstructionAsync> &
+    SelfPlanAndSendFunctions;
 };
 
 export type StablecoinPluginRequirements = ClientWithRpc<
@@ -575,7 +576,7 @@ export function stablecoinProgram() {
           addToBlacklist: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getAddToBlacklistInstruction(input),
+              getAddToBlacklistInstructionAsync(input),
             ),
           burn: (input) =>
             addSelfPlanAndSendFunctions(client, getBurnInstructionAsync(input)),
@@ -592,11 +593,14 @@ export function stablecoinProgram() {
           mint: (input) =>
             addSelfPlanAndSendFunctions(client, getMintInstructionAsync(input)),
           pause: (input) =>
-            addSelfPlanAndSendFunctions(client, getPauseInstruction(input)),
+            addSelfPlanAndSendFunctions(
+              client,
+              getPauseInstructionAsync(input),
+            ),
           removeFromBlacklist: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getRemoveFromBlacklistInstruction(input),
+              getRemoveFromBlacklistInstructionAsync(input),
             ),
           seize: (input) =>
             addSelfPlanAndSendFunctions(
@@ -611,10 +615,13 @@ export function stablecoinProgram() {
           transferAuthority: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getTransferAuthorityInstruction(input),
+              getTransferAuthorityInstructionAsync(input),
             ),
           unpause: (input) =>
-            addSelfPlanAndSendFunctions(client, getUnpauseInstruction(input)),
+            addSelfPlanAndSendFunctions(
+              client,
+              getUnpauseInstructionAsync(input),
+            ),
           updateMinter: (input) =>
             addSelfPlanAndSendFunctions(
               client,
@@ -623,7 +630,7 @@ export function stablecoinProgram() {
           updateRoles: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getUpdateRolesInstruction(input),
+              getUpdateRolesInstructionAsync(input),
             ),
         },
       },
