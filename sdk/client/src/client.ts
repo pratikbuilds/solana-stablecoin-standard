@@ -132,6 +132,7 @@ export class StablecoinClient {
           tokenProgram: TOKEN_2022_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
           rent: SYSVAR_RENT_PUBKEY,
+          program: this.stablecoinProgramId,
         },
         {
           name: params.name,
@@ -162,6 +163,7 @@ export class StablecoinClient {
           minter: this.wallet!.publicKey,
           minterQuota: minterQuotaPda,
           systemProgram: SystemProgram.programId,
+          program: this.stablecoinProgramId,
         },
         {
           minter: this.wallet!.publicKey,

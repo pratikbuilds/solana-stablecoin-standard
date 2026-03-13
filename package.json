@@ -6,14 +6,13 @@
   "workspaces": [
     "sdk/generated-kit",
     "sdk/generated-web3js",
-    "sdk/client",
-    "sdk/cli"
+    "sdk/client"
   ],
   "scripts": {
     "bootstrap": "yarn install",
     "generate": "node scripts/generate-sdks.mjs && node scripts/patch-generated.mjs",
     "build": "./scripts/build.sh",
-    "build:ts": "tsc -b sdk/generated-kit sdk/generated-web3js sdk/client sdk/cli",
+    "build:ts": "tsc -b sdk/generated-kit sdk/generated-web3js sdk/client",
     "build:rust": "cargo check --workspace",
     "build:anchor": "anchor build",
     "verify": "./scripts/check.sh",

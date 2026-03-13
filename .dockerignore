@@ -1,0 +1,12 @@
+.git
+.github
+.vscode
+target
+node_modules
+sdk/**/node_modules
+.env
+.env.*
+Dockerfile*
+docker-compose*.override.yml
+*.log
+

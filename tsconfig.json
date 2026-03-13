@@ -22,9 +22,6 @@
       "path": "./sdk/client"
     },
     {
-      "path": "./sdk/cli"
-    },
-    {
       "path": "./sdk/token"
     }
   ]

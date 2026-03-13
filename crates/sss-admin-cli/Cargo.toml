@@ -1,0 +1,36 @@
+[package]
+name = "sss-admin-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "sss-token"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+anchor-lang.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+solana-client.workspace = true
+solana-sdk.workspace = true
+spl-associated-token-account.workspace = true
+spl-token-2022.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+clap = { version = "4.5.32", features = ["derive"] }
+dirs = "6.0.0"
+reqwest = { version = "0.12.15", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+sss-common = { path = "../../modules/sss-common" }
+stablecoin = { path = "../../programs/stablecoin", features = ["no-entrypoint"] }
+stablecoin-client = { path = "../../backend/crates/stablecoin_client" }
+transfer-hook = { path = "../../programs/transfer-hook", features = ["no-entrypoint"] }
+toml = "0.8.20"
+sss-domain = { path = "../../backend/crates/domain" }
+
+[dev-dependencies]
+tempfile.workspace = true

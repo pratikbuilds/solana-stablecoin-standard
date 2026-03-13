@@ -1,21 +1,42 @@
 # Solana Stablecoin Standard
 
-Workspace bootstrap for the Superteam Brazil `solana-stablecoin-standard` bounty.
+Solana Stablecoin Standard is a Token-2022 stablecoin stack with two preset operating modes:
 
-## Structure
+- `SSS-1`: minimal issuer controls for mint, burn, pause, and freeze.
+- `SSS-2`: compliance-oriented controls that add blacklist, seizure, permanent delegate, and transfer-hook enforcement.
 
-This repository mirrors the `solana-vault-standard` monorepo shape so the stablecoin programs, SDK, CLI, backend, and tests can evolve without reorganization:
+The repository includes onchain programs, a TypeScript SDK, a Rust backend, and local plus devnet test coverage.
 
-- `programs/` Anchor programs
-- `sdk/` generated bindings, client helpers, and CLI
-- `backend/` Rust backend and Carbon indexer crates
-- `docs/` design, bootstrap, and submission documentation
-- `tests/` TypeScript/integration tests
-- `trident-tests/` trident-specific coverage
-- `modules/` shared specs and future reusable modules
-- `scripts/` build and bootstrap scripts
+## Overview
 
-## Bootstrap
+### Repository layout
+
+- `programs/stablecoin`: core Anchor program for mint lifecycle, roles, quotas, pause, freeze, blacklist, and seize.
+- `programs/transfer-hook`: Token-2022 transfer-hook program used by `SSS-2`.
+- `sdk/client`: handwritten TypeScript client for preset creation and operator workflows.
+- `sdk/generated-kit` and `sdk/generated-web3js`: generated bindings from Anchor IDLs.
+- `backend/crates/api`: Axum API for indexed data, operation requests, webhooks, and audit exports.
+- `backend/crates/indexer`: Carbon-based indexer that projects onchain events into Postgres.
+- `tests/litesvm`: local program tests.
+- `tests/devnet`: end-to-end preset and SDK coverage against deployed programs.
+
+### What the presets mean
+
+`SSS-1` is intended for issuers who need mint, burn, pause, and freeze without always-on compliance gating at transfer time.
+
+`SSS-2` is intended for issuers who need blacklist-backed transfer control. It enables the Token-2022 permanent delegate extension, installs a transfer hook, and can start accounts frozen by default.
+
+## Quick Start
+
+### Prerequisites
+
+- Rust toolchain
+- Anchor CLI
+- Node.js and Yarn 1.x
+- Solana CLI
+- Postgres if you want to run the backend stack
+
+### Build the workspace
 
 ```bash
 yarn install
@@ -23,51 +44,122 @@ yarn build
 yarn verify
 ```
 
-`yarn build` runs the TypeScript build, Rust workspace check, and Anchor build in one pipeline.
+`yarn build` runs TypeScript build, Rust workspace checks, SDK generation, and `anchor build`.
 
-## Devnet Integration Tests
+### Run local program tests
 
-The Devnet suite uses Mocha + TypeScript and targets the currently deployed workspace programs.
+```bash
+cargo test -p sss_litesvm_tests
+```
 
-Before running the tests:
+### Run devnet integration tests
 
-1. Fund `~/.config/solana/id.json` on Devnet.
-2. Deploy the latest programs and refresh the fixture file:
+Fund `~/.config/solana/id.json`, deploy the programs, then run:
 
 ```bash
 yarn test:devnet:deploy
-```
-
-Then run the integration suite:
-
-```bash
 yarn test:devnet
 ```
 
-Run a focused preset flow:
+Target a single flow when needed:
 
 ```bash
 yarn test:devnet --grep "SSS-1 devnet flow"
 yarn test:devnet --grep "SSS-2 devnet flow"
 ```
 
-Run the bounded stress suite:
+### Run the backend API
 
 ```bash
-DEVNET_STRESS_ITERATIONS=2 yarn test:devnet:stress
+export DATABASE_URL=postgres://localhost/sss_backend
+cargo run -p sss-api
 ```
 
-## Current status
+### Run the indexer
 
-Phase 1 is a functional workspace:
+```bash
+export DATABASE_URL=postgres://localhost/sss_backend
+export SOLANA_RPC_URL=https://api.devnet.solana.com
+cargo run -p sss-indexer
+```
 
-- buildable placeholder Anchor programs
-- buildable Rust backend crates
-- buildable TypeScript SDK and CLI packages
-- root scripts that verify the whole workspace
+### Run the backend with Docker
 
-Phase 2 will fill in the real architecture:
+Create a deployment env file, fill in the Solana settings, then boot the stack:
 
-- `programs/stablecoin` as the configurable core program
-- `programs/transfer-hook` as the SSS-2 enforcement program
-- `SSS-1` and `SSS-2` implemented as presets, not separate main programs
+```bash
+cp .env.docker.example .env.docker
+docker compose --env-file .env.docker up --build
+```
+
+The Compose stack starts:
+
+- `postgres` on `localhost:${POSTGRES_PORT:-5432}`
+- `api` on `http://localhost:${API_PORT:-8080}`
+- `indexer` on the internal Docker network
+
+Useful checks:
+
+```bash
+docker compose --env-file .env.docker config
+curl http://localhost:8080/healthz
+curl http://localhost:8080/readyz
+```
+
+## Preset Comparison
+
+| Capability | SSS-1 | SSS-2 |
+| --- | --- | --- |
+| Mint with quota enforcement | Yes | Yes |
+| Burn | Yes | Yes |
+| Pause and unpause | Yes | Yes |
+| Freeze and thaw token accounts | Yes | Yes |
+| Permanent delegate extension | No | Yes |
+| Transfer-hook enforcement | No | Yes |
+| Default account frozen | No by default | Yes by default |
+| Blacklist add and remove | No | Yes |
+| Seize from blacklisted frozen account | No | Yes |
+| Transfer-time blacklist rejection | No | Yes |
+
+Preset flags come from [`sdk/client/src/presets.ts`](/Users/pratik/development/work/solana-stablecoin-standard/sdk/client/src/presets.ts).
+
+## Architecture Diagram
+
+```mermaid
+flowchart LR
+    subgraph Chain["Solana"]
+        SC["stablecoin program"]
+        TH["transfer-hook program"]
+    end
+
+    subgraph Clients["Clients"]
+        SDK["TypeScript SDK / CLI"]
+        OPS["operators"]
+        APIC["backend API consumers"]
+    end
+
+    subgraph Backend["Backend"]
+        IDX["Carbon indexer"]
+        DB["Postgres"]
+        API["Axum API + workers"]
+    end
+
+    SDK --> SC
+    SDK --> TH
+    OPS --> SDK
+    SC --> IDX
+    TH --> IDX
+    IDX --> DB
+    API --> DB
+    APIC --> API
+```
+
+## Documentation
+
+- [ARCHITECTURE.md](/Users/pratik/development/work/solana-stablecoin-standard/ARCHITECTURE.md)
+- [SDK.md](/Users/pratik/development/work/solana-stablecoin-standard/SDK.md)
+- [OPERATIONS.md](/Users/pratik/development/work/solana-stablecoin-standard/OPERATIONS.md)
+- [SSS-1.md](/Users/pratik/development/work/solana-stablecoin-standard/SSS-1.md)
+- [SSS-2.md](/Users/pratik/development/work/solana-stablecoin-standard/SSS-2.md)
+- [COMPLIANCE.md](/Users/pratik/development/work/solana-stablecoin-standard/COMPLIANCE.md)
+- [API.md](/Users/pratik/development/work/solana-stablecoin-standard/API.md)

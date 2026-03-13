@@ -192,6 +192,7 @@ export class Stablecoin {
         mint: this.mintAddress,
         to: toAta,
         tokenProgram: TOKEN_2022_PROGRAM_ID,
+        program: this.client.stablecoinProgramId,
       },
       { amount: args.amount },
       this.client.stablecoinProgramId
@@ -207,6 +208,7 @@ export class Stablecoin {
         mint: this.mintAddress,
         from: args.account,
         tokenProgram: TOKEN_2022_PROGRAM_ID,
+        program: this.client.stablecoinProgramId,
       },
       { amount: args.amount },
       this.client.stablecoinProgramId
@@ -219,6 +221,7 @@ export class Stablecoin {
         authority: this.requireWallet().publicKey,
         config: this.configPda,
         roleConfig: this.roleConfigPda,
+        program: this.client.stablecoinProgramId,
       },
       this.client.stablecoinProgramId
     );
@@ -230,6 +233,7 @@ export class Stablecoin {
         authority: this.requireWallet().publicKey,
         config: this.configPda,
         roleConfig: this.roleConfigPda,
+        program: this.client.stablecoinProgramId,
       },
       this.client.stablecoinProgramId
     );
@@ -244,6 +248,7 @@ export class Stablecoin {
         mint: this.mintAddress,
         account,
         tokenProgram: TOKEN_2022_PROGRAM_ID,
+        program: this.client.stablecoinProgramId,
       },
       this.client.stablecoinProgramId
     );
@@ -258,6 +263,7 @@ export class Stablecoin {
         mint: this.mintAddress,
         account,
         tokenProgram: TOKEN_2022_PROGRAM_ID,
+        program: this.client.stablecoinProgramId,
       },
       this.client.stablecoinProgramId
     );
@@ -277,6 +283,7 @@ export class Stablecoin {
         wallet,
         blacklistEntry: blacklistEntryPda,
         systemProgram: SystemProgram.programId,
+        program: this.client.stablecoinProgramId,
       },
       { reason },
       this.client.stablecoinProgramId
@@ -295,6 +302,7 @@ export class Stablecoin {
         config: this.configPda,
         roleConfig: this.roleConfigPda,
         blacklistEntry: blacklistEntryPda,
+        program: this.client.stablecoinProgramId,
       },
       this.client.stablecoinProgramId
     );
@@ -336,6 +344,7 @@ export class Stablecoin {
         extraAccountMetaList: extraAccountMetaListPda,
         destinationBlacklist: destinationBlacklistPda,
         tokenProgram: TOKEN_2022_PROGRAM_ID,
+        program: this.client.stablecoinProgramId,
       },
       { amount: args.amount },
       this.client.stablecoinProgramId
@@ -348,6 +357,7 @@ export class Stablecoin {
         authority: this.requireWallet().publicKey,
         config: this.configPda,
         roleConfig: this.roleConfigPda,
+        program: this.client.stablecoinProgramId,
       },
       { newAuthority },
       this.client.stablecoinProgramId
@@ -360,6 +370,7 @@ export class Stablecoin {
         authority: this.requireWallet().publicKey,
         config: this.configPda,
         roleConfig: this.roleConfigPda,
+        program: this.client.stablecoinProgramId,
       },
       {
         pauser: args.pauser ?? null,
@@ -386,6 +397,7 @@ export class Stablecoin {
         minter: args.minter,
         minterQuota: minterQuotaPda,
         systemProgram: SystemProgram.programId,
+        program: this.client.stablecoinProgramId,
       },
       { minter: args.minter, quota: args.quota, active: args.active },
       this.client.stablecoinProgramId

@@ -17,6 +17,12 @@ description = "Codama-generated Rust client for the stablecoin program"
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = []
+fetch = ["dep:solana-client"]
+anchor = ["dep:anchor-lang"]
+anchor-idl-build = ["anchor"]
+
 [dependencies]
 borsh = "^1.0"
 solana-account = "~3.0"
@@ -39,4 +45,3 @@ thiserror = "^1.0"
   [dependencies.anchor-lang]
   optional = true
   version = "~0.31"
-
