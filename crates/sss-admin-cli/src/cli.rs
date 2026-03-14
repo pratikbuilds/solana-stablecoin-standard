@@ -34,8 +34,23 @@ pub enum Command {
     },
     Holders(HoldersArgs),
     AuditLog(AuditLogArgs),
+    Operation {
+        #[command(subcommand)]
+        command: OperationCommand,
+    },
     Status(ReadArgs),
     Supply(ReadArgs),
+}
+
+#[derive(Debug, Subcommand, Clone)]
+pub enum OperationCommand {
+    Get { id: String },
+    Approve {
+        id: String,
+        #[arg(long)]
+        approved_by: Option<String>,
+    },
+    Execute { id: String },
 }
 
 #[derive(Debug, Args, Clone)]

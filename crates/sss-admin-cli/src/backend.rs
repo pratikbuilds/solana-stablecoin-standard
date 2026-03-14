@@ -1,8 +1,7 @@
 use anyhow::{Context, Result};
 use reqwest::blocking::Client;
 use serde::Serialize;
-use serde_json::{json, Value};
-use sss_domain::{ChainEvent, MintRecord, OperationRequest};
+use sss_domain::{EventRecord, LifecycleRequest};
 use uuid::Uuid;
 
 use crate::config::InitConfigFile;
@@ -13,16 +12,21 @@ pub struct BackendClient {
 }
 
 #[derive(Debug, Serialize)]
-struct CreateOperationBody {
+struct CreateLifecycleBody {
     mint: String,
-    target_wallet: Option<String>,
-    target_token_account: Option<String>,
-    amount: Option<i128>,
+    recipient: Option<String>,
+    token_account: Option<String>,
+    amount: i128,
+    minter: Option<String>,
     reason: Option<String>,
-    external_reference: Option<String>,
-    idempotency_key: String,
+    idempotency_key: Option<String>,
     requested_by: String,
-    metadata: Value,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsResponse {
+    events: Vec<EventRecord>,
+    total: i64,
 }
 
 impl BackendClient {
@@ -50,26 +54,42 @@ impl BackendClient {
         })
     }
 
-    pub fn get_mint(&self, mint: &str) -> Result<MintRecord> {
-        self.http
-            .get(format!("{}/v1/mints/{}", self.base_url, mint))
-            .send()
-            .context("request mint status")?
-            .error_for_status()
-            .context("mint status request failed")?
-            .json()
-            .context("decode mint status response")
-    }
-
-    pub fn list_mint_events(&self, mint: &str) -> Result<Vec<ChainEvent>> {
-        self.http
-            .get(format!("{}/v1/mints/{}/events", self.base_url, mint))
+    pub fn list_mint_events(
+        &self,
+        mint: &str,
+        event_type: Option<&str>,
+        from: Option<&str>,
+        to: Option<&str>,
+        limit: Option<u32>,
+    ) -> Result<Vec<EventRecord>> {
+        let mut url = format!("{}/v1/mints/{}/events", self.base_url, mint);
+        let mut params: Vec<String> = Vec::new();
+        if let Some(et) = event_type {
+            params.push(format!("event_type={}", urlencoding::encode(et)));
+        }
+        if let Some(f) = from {
+            params.push(format!("from={}", urlencoding::encode(f)));
+        }
+        if let Some(t) = to {
+            params.push(format!("to={}", urlencoding::encode(t)));
+        }
+        if let Some(l) = limit {
+            params.push(format!("limit={}", l));
+        }
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+        let resp: EventsResponse = self
+            .http
+            .get(&url)
             .send()
             .context("request mint events")?
             .error_for_status()
             .context("mint events request failed")?
             .json()
-            .context("decode mint events response")
+            .context("decode mint events response")?;
+        Ok(resp.events)
     }
 
     pub fn create_mint_request(
@@ -78,19 +98,18 @@ impl BackendClient {
         recipient: String,
         amount: i128,
         reason: Option<String>,
-    ) -> Result<OperationRequest> {
-        self.create_operation(
+    ) -> Result<LifecycleRequest> {
+        self.create_lifecycle_request(
             "/v1/mint-requests",
-            CreateOperationBody {
+            CreateLifecycleBody {
                 mint,
-                target_wallet: Some(recipient),
-                target_token_account: None,
-                amount: Some(amount),
+                recipient: Some(recipient),
+                token_account: None,
+                amount,
+                minter: None,
                 reason,
-                external_reference: None,
-                idempotency_key: Uuid::new_v4().to_string(),
+                idempotency_key: Some(Uuid::new_v4().to_string()),
                 requested_by: requested_by(),
-                metadata: json!({}),
             },
         )
     }
@@ -101,128 +120,23 @@ impl BackendClient {
         account: Option<String>,
         amount: i128,
         reason: Option<String>,
-    ) -> Result<OperationRequest> {
-        self.create_operation(
+    ) -> Result<LifecycleRequest> {
+        self.create_lifecycle_request(
             "/v1/burn-requests",
-            CreateOperationBody {
+            CreateLifecycleBody {
                 mint,
-                target_wallet: None,
-                target_token_account: account,
-                amount: Some(amount),
-                reason,
-                external_reference: None,
-                idempotency_key: Uuid::new_v4().to_string(),
-                requested_by: requested_by(),
-                metadata: json!({}),
-            },
-        )
-    }
-
-    pub fn create_freeze_request(
-        &self,
-        mint: String,
-        address: String,
-        reason: Option<String>,
-    ) -> Result<OperationRequest> {
-        self.create_operation(
-            "/v1/compliance/freeze",
-            CreateOperationBody {
-                mint,
-                target_wallet: Some(address),
-                target_token_account: None,
-                amount: None,
-                reason,
-                external_reference: None,
-                idempotency_key: Uuid::new_v4().to_string(),
-                requested_by: requested_by(),
-                metadata: json!({}),
-            },
-        )
-    }
-
-    pub fn create_thaw_request(
-        &self,
-        mint: String,
-        address: String,
-        reason: Option<String>,
-    ) -> Result<OperationRequest> {
-        self.create_operation(
-            "/v1/compliance/thaw",
-            CreateOperationBody {
-                mint,
-                target_wallet: Some(address),
-                target_token_account: None,
-                amount: None,
-                reason,
-                external_reference: None,
-                idempotency_key: Uuid::new_v4().to_string(),
-                requested_by: requested_by(),
-                metadata: json!({}),
-            },
-        )
-    }
-
-    pub fn create_blacklist_add_request(
-        &self,
-        mint: String,
-        address: String,
-        reason: String,
-    ) -> Result<OperationRequest> {
-        self.create_operation(
-            "/v1/compliance/blacklists",
-            CreateOperationBody {
-                mint,
-                target_wallet: Some(address),
-                target_token_account: None,
-                amount: None,
-                reason: Some(reason),
-                external_reference: None,
-                idempotency_key: Uuid::new_v4().to_string(),
-                requested_by: requested_by(),
-                metadata: json!({}),
-            },
-        )
-    }
-
-    pub fn create_blacklist_remove_request(&self, mint: String, address: String) -> Result<OperationRequest> {
-        self.http
-            .delete(format!(
-                "{}/v1/compliance/blacklists/{}/{}",
-                self.base_url, mint, address
-            ))
-            .send()
-            .context("request blacklist removal")?
-            .error_for_status()
-            .context("blacklist removal request failed")?
-            .json()
-            .context("decode blacklist removal response")
-    }
-
-    pub fn create_seize_request(
-        &self,
-        mint: String,
-        address: String,
-        treasury: String,
-        amount: Option<i128>,
-        reason: Option<String>,
-    ) -> Result<OperationRequest> {
-        self.create_operation(
-            "/v1/compliance/seize",
-            CreateOperationBody {
-                mint,
-                target_wallet: Some(address),
-                target_token_account: Some(treasury),
+                recipient: None,
+                token_account: account,
                 amount,
+                minter: None,
                 reason,
-                external_reference: None,
-                idempotency_key: Uuid::new_v4().to_string(),
+                idempotency_key: Some(Uuid::new_v4().to_string()),
                 requested_by: requested_by(),
-                metadata: json!({}),
             },
         )
     }
 
-    fn create_operation(&self, path: &str, body: CreateOperationBody) -> Result<OperationRequest> {
+    fn create_lifecycle_request(&self, path: &str, body: CreateLifecycleBody) -> Result<LifecycleRequest> {
         self.http
             .post(format!("{}{}", self.base_url, path))
             .json(&body)
@@ -232,6 +146,50 @@ impl BackendClient {
             .with_context(|| format!("{} failed", path))?
             .json()
             .with_context(|| format!("decode response for {}", path))
+    }
+
+    pub fn get_operation(&self, id: &str) -> Result<LifecycleRequest> {
+        #[derive(serde::Deserialize)]
+        struct Wrapper {
+            request: LifecycleRequest,
+        }
+        let w: Wrapper = self
+            .http
+            .get(format!("{}/v1/operations/{}", self.base_url, id))
+            .send()
+            .context("request operation")?
+            .error_for_status()
+            .context("get operation failed")?
+            .json()
+            .context("decode operation response")?;
+        Ok(w.request)
+    }
+
+    pub fn approve_operation(&self, id: &str, approved_by: &str) -> Result<LifecycleRequest> {
+        #[derive(serde::Serialize)]
+        struct Body<'a> {
+            approved_by: &'a str,
+        }
+        self.http
+            .post(format!("{}/v1/operations/{}/approve", self.base_url, id))
+            .json(&Body { approved_by })
+            .send()
+            .context("request approve")?
+            .error_for_status()
+            .context("approve failed")?
+            .json()
+            .context("decode approve response")
+    }
+
+    pub fn execute_operation(&self, id: &str) -> Result<LifecycleRequest> {
+        self.http
+            .post(format!("{}/v1/operations/{}/execute", self.base_url, id))
+            .send()
+            .context("request execute")?
+            .error_for_status()
+            .context("execute failed")?
+            .json()
+            .context("decode execute response")
     }
 }
 

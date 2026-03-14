@@ -3,8 +3,8 @@ use hmac::{Hmac, Mac};
 use reqwest::Client;
 use sha2::Sha256;
 use sss_domain::{
-    AuditExport, AuditExporter, OperationExecutionResult, OperationRequest, SignerBackend,
-    WebhookDelivery, WebhookDispatcher, WebhookEndpoint, WorkerError,
+    EventRecord, LifecycleExecutionResult, LifecycleRequest, SignerBackend, WebhookDelivery,
+    WebhookDispatcher, WebhookSubscription, WorkerError,
 };
 
 pub struct HttpWebhookDispatcher {
@@ -23,23 +23,42 @@ impl Default for HttpWebhookDispatcher {
 impl WebhookDispatcher for HttpWebhookDispatcher {
     async fn deliver(
         &self,
-        endpoint: &WebhookEndpoint,
+        subscription: &WebhookSubscription,
         delivery: &WebhookDelivery,
+        event: &EventRecord,
     ) -> Result<Option<i32>, WorkerError> {
         type HmacSha256 = Hmac<Sha256>;
 
-        let body =
-            serde_json::to_vec(&delivery.payload).map_err(|err| WorkerError::Dependency(err.to_string()))?;
-        let mut mac = HmacSha256::new_from_slice(endpoint.secret.as_bytes())
-            .map_err(|err| WorkerError::Dependency(err.to_string()))?;
+        let payload = serde_json::json!({
+            "event_id": event.id,
+            "event_type": event.event_type,
+            "program_id": event.program_id,
+            "mint": event.mint,
+            "tx_signature": event.tx_signature,
+            "slot": event.slot,
+            "block_time": event.block_time,
+            "instruction_index": event.instruction_index,
+            "data": event.data,
+            "created_at": event.created_at,
+        });
+
+        let body = serde_json::to_vec(&payload).map_err(|err| WorkerError::Dependency(err.to_string()))?;
+        let mut mac = HmacSha256::new_from_slice(
+            subscription
+                .secret
+                .as_deref()
+                .unwrap_or("")
+                .as_bytes(),
+        )
+        .map_err(|err| WorkerError::Dependency(err.to_string()))?;
         mac.update(&body);
         let signature = hex::encode(mac.finalize().into_bytes());
 
         let response = self
             .client
-            .post(&endpoint.url)
+            .post(&subscription.url)
             .header("x-sss-signature", signature)
-            .json(&delivery.payload)
+            .json(&payload)
             .send()
             .await
             .map_err(|err| WorkerError::Dependency(err.to_string()))?;
@@ -55,15 +74,6 @@ impl WebhookDispatcher for HttpWebhookDispatcher {
     }
 }
 
-pub struct JsonAuditExporter;
-
-#[async_trait]
-impl AuditExporter for JsonAuditExporter {
-    async fn export(&self, export: &AuditExport) -> Result<String, WorkerError> {
-        Ok(format!("audit-export-{}.json", export.id))
-    }
-}
-
 pub struct LocalKeypairSigner;
 
 #[async_trait]
@@ -72,10 +82,9 @@ impl SignerBackend for LocalKeypairSigner {
         "local_keypair"
     }
 
-    async fn execute(&self, operation: &OperationRequest) -> Result<OperationExecutionResult, WorkerError> {
-        Err(WorkerError::Dependency(format!(
-            "execution for {} is not wired yet",
-            operation.kind.as_str()
-        )))
+    async fn execute(&self, _request: &LifecycleRequest) -> Result<LifecycleExecutionResult, WorkerError> {
+        Err(WorkerError::Dependency(
+            "execution is not wired for local_keypair signer".to_string(),
+        ))
     }
 }

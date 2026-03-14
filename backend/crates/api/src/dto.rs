@@ -1,35 +1,38 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use sss_domain::{OperationAttempt, OperationRequest};
+use sss_domain::{EventRecord, LifecycleRequest};
 
 #[derive(Debug, Deserialize)]
-pub struct CreateOperationBody {
+pub struct CreateLifecycleBody {
     pub mint: String,
-    pub target_wallet: Option<String>,
-    pub target_token_account: Option<String>,
-    pub amount: Option<i128>,
+    pub recipient: Option<String>,
+    pub token_account: Option<String>,
+    pub amount: i128,
+    pub minter: Option<String>,
     pub reason: Option<String>,
-    pub external_reference: Option<String>,
-    pub idempotency_key: String,
+    pub idempotency_key: Option<String>,
     pub requested_by: String,
-    #[serde(default)]
-    pub metadata: Value,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ApproveOperationBody {
+pub struct ApproveLifecycleBody {
     pub approved_by: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CreateAuditExportBody {
-    pub requested_by: String,
-    #[serde(default)]
-    pub filters: Value,
+#[derive(Debug, Serialize)]
+pub struct LifecycleDetailsResponse {
+    pub request: LifecycleRequest,
 }
 
 #[derive(Debug, Serialize)]
-pub struct OperationDetailsResponse {
-    pub operation: OperationRequest,
-    pub attempts: Vec<OperationAttempt>,
+pub struct EventsResponse {
+    pub events: Vec<EventRecord>,
+    pub total: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateWebhookSubscriptionBody {
+    pub name: Option<String>,
+    pub url: String,
+    pub events: Vec<String>,
+    pub secret: Option<String>,
 }

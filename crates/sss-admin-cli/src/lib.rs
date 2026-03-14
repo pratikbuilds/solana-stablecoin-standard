@@ -9,7 +9,7 @@ pub use config::{InitConfigFile, Preset, PresetDetails, ProfileConfig};
 
 use anyhow::Result;
 use clap::Parser;
-use sss_domain::{MintRecord, OperationRequest};
+use sss_domain::LifecycleRequest;
 
 use crate::backend::BackendClient;
 use crate::chain::ChainClient;
@@ -42,22 +42,18 @@ where
             }
         }
         Command::Status(args) => {
-            let client = BackendClient::from_runtime(runtime_config.as_ref())?;
-            let mint = resolve_mint(args.mint, runtime_config.as_ref())?;
-            let record = client.get_mint(&mint)?;
-            print_mint_status(&record);
+            let chain = ChainClient::from_runtime(runtime_config.as_ref())?;
+            let mint = parse_pubkey(&resolve_mint(args.mint, runtime_config.as_ref())?)?;
+            let holders = chain.list_holders(mint, None)?;
+            let supply: u64 = holders.iter().map(|h| h.amount).sum();
+            println!("mint: {}\nsupply: {}", mint, supply);
         }
         Command::Supply(args) => {
-            let client = BackendClient::from_runtime(runtime_config.as_ref())?;
-            let mint = resolve_mint(args.mint, runtime_config.as_ref())?;
-            let record = client.get_mint(&mint)?;
-            println!(
-                "mint: {}\nname: {}\nsymbol: {}\ncirculating_supply: {}",
-                record.mint,
-                record.name,
-                record.symbol,
-                record.total_minted - record.total_burned
-            );
+            let chain = ChainClient::from_runtime(runtime_config.as_ref())?;
+            let mint = parse_pubkey(&resolve_mint(args.mint, runtime_config.as_ref())?)?;
+            let holders = chain.list_holders(mint, None)?;
+            let supply: u64 = holders.iter().map(|h| h.amount).sum();
+            println!("mint: {}\nsupply: {}", mint, supply);
         }
         Command::Mint(args) => {
             confirm_or_abort(
@@ -66,71 +62,37 @@ where
             )?;
             let client = BackendClient::from_runtime(runtime_config.as_ref())?;
             let mint = resolve_mint(args.mint, runtime_config.as_ref())?;
-            let op = client.create_mint_request(
+            let request = client.create_mint_request(
                 mint,
                 args.recipient,
                 parse_amount(&args.amount)?,
                 args.reason,
             )?;
-            print_operation(&op);
+            print_lifecycle_request(&request);
         }
         Command::Burn(args) => {
             confirm_or_abort(args.yes, &format!("Burn {} tokens", args.amount))?;
             let client = BackendClient::from_runtime(runtime_config.as_ref())?;
             let mint = resolve_mint(args.mint, runtime_config.as_ref())?;
-            let op = client.create_burn_request(
+            let request = client.create_burn_request(
                 mint,
                 args.account,
                 parse_amount(&args.amount)?,
                 args.reason,
             )?;
-            print_operation(&op);
+            print_lifecycle_request(&request);
         }
-        Command::Freeze(args) => {
-            confirm_or_abort(args.yes, &format!("Freeze {}", args.address))?;
-            let client = BackendClient::from_runtime(runtime_config.as_ref())?;
-            let mint = resolve_mint(args.mint, runtime_config.as_ref())?;
-            let op = client.create_freeze_request(mint, args.address, args.reason)?;
-            print_operation(&op);
+        Command::Freeze(_) => {
+            anyhow::bail!("compliance endpoints removed; use chain client for freeze");
         }
-        Command::Thaw(args) => {
-            confirm_or_abort(args.yes, &format!("Thaw {}", args.address))?;
-            let client = BackendClient::from_runtime(runtime_config.as_ref())?;
-            let mint = resolve_mint(args.mint, runtime_config.as_ref())?;
-            let op = client.create_thaw_request(mint, args.address, args.reason)?;
-            print_operation(&op);
+        Command::Thaw(_) => {
+            anyhow::bail!("compliance endpoints removed; use chain client for thaw");
         }
-        Command::Blacklist { command } => match command {
-            cli::BlacklistCommand::Add(args) => {
-                confirm_or_abort(args.yes, &format!("Blacklist {}", args.address))?;
-                let client = BackendClient::from_runtime(runtime_config.as_ref())?;
-                let mint = resolve_mint(args.mint, runtime_config.as_ref())?;
-                let op = client.create_blacklist_add_request(mint, args.address, args.reason)?;
-                print_operation(&op);
-            }
-            cli::BlacklistCommand::Remove(args) => {
-                confirm_or_abort(args.yes, &format!("Remove {} from blacklist", args.address))?;
-                let client = BackendClient::from_runtime(runtime_config.as_ref())?;
-                let mint = resolve_mint(args.mint, runtime_config.as_ref())?;
-                let op = client.create_blacklist_remove_request(mint, args.address)?;
-                print_operation(&op);
-            }
-        },
-        Command::Seize(args) => {
-            confirm_or_abort(
-                args.yes,
-                &format!("Seize {} and send to {}", args.address, args.to),
-            )?;
-            let client = BackendClient::from_runtime(runtime_config.as_ref())?;
-            let mint = resolve_mint(args.mint, runtime_config.as_ref())?;
-            let op = client.create_seize_request(
-                mint,
-                args.address,
-                args.to,
-                args.amount.as_deref().map(parse_amount).transpose()?,
-                args.reason,
-            )?;
-            print_operation(&op);
+        Command::Blacklist { .. } => {
+            anyhow::bail!("compliance endpoints removed; use chain client for blacklist");
+        }
+        Command::Seize(_) => {
+            anyhow::bail!("compliance endpoints removed; use chain client for seize");
         }
         Command::Pause(args) => {
             confirm_or_abort(args.yes, "Pause mint operations")?;
@@ -174,6 +136,26 @@ where
                 println!("signature: {signature}");
             }
         },
+        Command::Operation { command } => match command {
+            cli::OperationCommand::Get { id } => {
+                let client = BackendClient::from_runtime(runtime_config.as_ref())?;
+                let request = client.get_operation(&id)?;
+                print_lifecycle_request(&request);
+            }
+            cli::OperationCommand::Approve { id, approved_by } => {
+                let approved_by = approved_by
+                    .or_else(|| std::env::var("USER").ok())
+                    .unwrap_or_else(|| "sss-token".to_string());
+                let client = BackendClient::from_runtime(runtime_config.as_ref())?;
+                let request = client.approve_operation(&id, &approved_by)?;
+                print_lifecycle_request(&request);
+            }
+            cli::OperationCommand::Execute { id } => {
+                let client = BackendClient::from_runtime(runtime_config.as_ref())?;
+                let request = client.execute_operation(&id)?;
+                print_lifecycle_request(&request);
+            }
+        },
         Command::Holders(args) => {
             let chain = ChainClient::from_runtime(runtime_config.as_ref())?;
             let mint = parse_pubkey(&resolve_mint(args.mint, runtime_config.as_ref())?)?;
@@ -189,18 +171,22 @@ where
         Command::AuditLog(args) => {
             let client = BackendClient::from_runtime(runtime_config.as_ref())?;
             let mint = resolve_mint(args.mint, runtime_config.as_ref())?;
-            let mut events = client.list_mint_events(&mint)?;
-            if let Some(action) = args.action {
-                let action_name = audit_action_name(action);
-                events.retain(|event| event.event_type == action_name);
-            }
+            let event_type = args.action.as_ref().map(|a| audit_action_name(a.clone()));
+            let limit = args.limit.map(|l| l as u32);
+            let mut events = client.list_mint_events(
+                &mint,
+                event_type.as_deref(),
+                args.from.as_deref(),
+                args.to.as_deref(),
+                limit.or(Some(100)),
+            )?;
             if let Some(wallet) = args.wallet {
-                events.retain(|event| event.payload.to_string().contains(&wallet));
+                events.retain(|event| event.data.to_string().contains(&wallet));
             }
             for event in events.into_iter().take(args.limit.unwrap_or(100) as usize) {
                 println!(
-                    "event_type: {}\nslot: {}\ntx_signature: {}\npayload: {}\n",
-                    event.event_type, event.slot, event.tx_signature, event.payload
+                    "event_type: {}\nslot: {}\ntx_signature: {}\ndata: {}\n",
+                    event.event_type, event.slot, event.tx_signature, event.data
                 );
             }
         }
@@ -248,58 +234,27 @@ fn confirm_or_abort(skip: bool, summary: &str) -> Result<()> {
     Ok(())
 }
 
-fn print_mint_status(record: &MintRecord) {
+fn print_lifecycle_request(request: &LifecycleRequest) {
     println!(
-        concat!(
-            "mint: {}\n",
-            "name: {}\n",
-            "symbol: {}\n",
-            "uri: {}\n",
-            "preset: {}\n",
-            "paused: {}\n",
-            "permanent_delegate: {}\n",
-            "transfer_hook: {}\n",
-            "default_account_frozen: {}\n",
-            "total_minted: {}\n",
-            "total_burned: {}\n",
-            "circulating_supply: {}\n"
-        ),
-        record.mint,
-        record.name,
-        record.symbol,
-        record.uri,
-        record.preset,
-        record.paused,
-        record.enable_permanent_delegate,
-        record.enable_transfer_hook,
-        record.default_account_frozen,
-        record.total_minted,
-        record.total_burned,
-        record.total_minted - record.total_burned,
-    );
-}
-
-fn print_operation(operation: &OperationRequest) {
-    println!(
-        "operation_id: {}\nkind: {}\nstatus: {}\nmint: {}",
-        operation.id,
-        operation.kind.as_str(),
-        operation.status.as_str(),
-        operation.mint
+        "request_id: {}\ntype: {}\nstatus: {}\nmint: {}",
+        request.id,
+        request.type_.as_str(),
+        request.status.as_str(),
+        request.mint
     );
 }
 
 fn audit_action_name(action: cli::AuditAction) -> String {
     match action {
-        cli::AuditAction::Mint => "tokens_minted",
-        cli::AuditAction::Burn => "tokens_burned",
-        cli::AuditAction::Freeze => "account_frozen",
-        cli::AuditAction::Thaw => "account_thawed",
-        cli::AuditAction::Pause => "pause_changed",
-        cli::AuditAction::Unpause => "pause_changed",
-        cli::AuditAction::BlacklistAdd => "address_blacklisted",
-        cli::AuditAction::BlacklistRemove => "address_unblacklisted",
-        cli::AuditAction::Seize => "tokens_seized",
+        cli::AuditAction::Mint => "TokensMinted",
+        cli::AuditAction::Burn => "TokensBurned",
+        cli::AuditAction::Freeze => "AccountFrozen",
+        cli::AuditAction::Thaw => "AccountThawed",
+        cli::AuditAction::Pause => "PauseChanged",
+        cli::AuditAction::Unpause => "PauseChanged",
+        cli::AuditAction::BlacklistAdd => "AddressBlacklisted",
+        cli::AuditAction::BlacklistRemove => "AddressUnblacklisted",
+        cli::AuditAction::Seize => "TokensSeized",
     }
     .to_string()
 }

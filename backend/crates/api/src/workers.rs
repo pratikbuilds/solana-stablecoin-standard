@@ -4,12 +4,11 @@ use anyhow::Result;
 use chrono::{Duration as ChronoDuration, Utc};
 use sss_db::Store;
 use sss_domain::{
-    AttemptStatus, AuditExporter, AuditExportStatus, OperationAttempt, OperationStatus,
-    SignerBackend, WebhookDeliveryStatus, WebhookDispatcher,
+    LifecycleStatus, SignerBackend, WebhookDeliveryStatus, WebhookDispatcher,
 };
 use tracing::{error, warn};
 
-use crate::services::{HttpWebhookDispatcher, JsonAuditExporter, LocalKeypairSigner};
+use crate::services::{HttpWebhookDispatcher, LocalKeypairSigner};
 use crate::signer::AuthorityKeypairSigner;
 
 pub struct OperationExecutorWorker<B: ?Sized> {
@@ -23,66 +22,36 @@ where
     B: SignerBackend + ?Sized + 'static,
 {
     pub async fn run_once(&self) -> Result<usize> {
-        let operations = self
+        let requests = self
             .store
-            .list_operations_by_status(OperationStatus::Approved, self.poll_limit)
+            .list_lifecycle_requests_by_status(LifecycleStatus::Approved, self.poll_limit)
             .await?;
         let mut processed = 0usize;
 
-        for operation in operations {
+        for request in requests {
             processed += 1;
             self.store
-                .mark_operation_status(operation.id, OperationStatus::Signing, None, None)
+                .mark_lifecycle_status(&request.id, LifecycleStatus::Signing, None, None)
                 .await?;
 
-            let attempt = OperationAttempt {
-                id: None,
-                operation_id: operation.id,
-                attempt_number: 1,
-                status: AttemptStatus::Started,
-                signer_backend: self.signer.name().to_string(),
-                tx_signature: None,
-                rpc_endpoint: None,
-                error_message: None,
-                started_at: Utc::now(),
-                finished_at: None,
-            };
-            self.store.create_attempt(&attempt).await?;
-
-            match self.signer.as_ref().execute(&operation).await {
+            match self.signer.as_ref().execute(&request).await {
                 Ok(result) => {
                     self.store
-                        .create_attempt(&OperationAttempt {
-                            status: AttemptStatus::Submitted,
-                            tx_signature: Some(result.tx_signature.clone()),
-                            finished_at: Some(Utc::now()),
-                            ..attempt.clone()
-                        })
-                        .await?;
-                    self.store
-                        .mark_operation_status(
-                            result.operation_id,
-                            OperationStatus::Submitted,
+                        .mark_lifecycle_status(
+                            &result.request_id,
+                            LifecycleStatus::Finalized,
                             Some(&result.tx_signature),
                             None,
                         )
                         .await?;
                 }
-                Err(error) => {
+                Err(err) => {
                     self.store
-                        .create_attempt(&OperationAttempt {
-                            status: AttemptStatus::Failed,
-                            error_message: Some(error.to_string()),
-                            finished_at: Some(Utc::now()),
-                            ..attempt.clone()
-                        })
-                        .await?;
-                    self.store
-                        .mark_operation_status(
-                            operation.id,
-                            OperationStatus::Failed,
+                        .mark_lifecycle_status(
+                            &request.id,
+                            LifecycleStatus::Failed,
                             None,
-                            Some(&error.to_string()),
+                            Some(&err.to_string()),
                         )
                         .await?;
                 }
@@ -107,103 +76,60 @@ where
     pub async fn run_once(&self) -> Result<usize> {
         let deliveries = self
             .store
-            .list_due_deliveries(Utc::now(), self.poll_limit)
+            .list_due_webhook_deliveries(Utc::now(), self.poll_limit)
             .await?;
-        let endpoints = self.store.list_webhook_endpoints().await?;
+        let subscriptions = self.store.list_webhook_subscriptions().await?;
         let mut processed = 0usize;
 
         for delivery in deliveries {
             processed += 1;
-            let Some(delivery_id) = delivery.id else {
-                continue;
-            };
-            let Some(endpoint) = endpoints
+            let Some(subscription) = subscriptions
                 .iter()
-                .find(|candidate| candidate.id == delivery.webhook_endpoint_id)
+                .find(|s| s.id == delivery.subscription_id)
             else {
                 continue;
             };
+            let Some(event) = self.store.get_event(delivery.event_id).await? else {
+                continue;
+            };
 
-            match self.dispatcher.deliver(endpoint, &delivery).await {
+            match self
+                .dispatcher
+                .deliver(subscription, &delivery, &event)
+                .await
+            {
                 Ok(status) => {
                     self.store
                         .mark_webhook_delivery(
-                            delivery_id,
+                            delivery.id,
                             WebhookDeliveryStatus::Delivered,
-                            delivery.attempt_count + 1,
+                            delivery.attempts + 1,
                             None,
                             status,
                             None,
-                            Some(Utc::now()),
                         )
                         .await?;
                 }
-                Err(error) => {
-                    let attempt_count = delivery.attempt_count + 1;
-                    let status = if attempt_count >= self.max_attempts {
+                Err(err) => {
+                    let attempts = delivery.attempts + 1;
+                    let status = if attempts >= self.max_attempts {
                         WebhookDeliveryStatus::DeadLetter
                     } else {
                         WebhookDeliveryStatus::Failed
                     };
-                    let next_attempt_at = if status == WebhookDeliveryStatus::DeadLetter {
+                    let next_retry_at = if status == WebhookDeliveryStatus::DeadLetter {
                         None
                     } else {
-                        Some(Utc::now() + ChronoDuration::seconds(2_i64.pow(attempt_count as u32)))
+                        Some(Utc::now() + ChronoDuration::seconds(2_i64.pow(attempts as u32)))
                     };
                     self.store
                         .mark_webhook_delivery(
-                            delivery_id,
+                            delivery.id,
                             status,
-                            attempt_count,
-                            next_attempt_at,
+                            attempts,
+                            next_retry_at,
                             None,
-                            Some(&error.to_string()),
-                            None,
-                        )
-                        .await?;
-                }
-            }
-        }
-
-        Ok(processed)
-    }
-}
-
-pub struct AuditExportWorker<E> {
-    pub store: Store,
-    pub exporter: Arc<E>,
-    pub poll_limit: i64,
-}
-
-impl<E> AuditExportWorker<E>
-where
-    E: AuditExporter + 'static,
-{
-    pub async fn run_once(&self) -> Result<usize> {
-        let exports = self
-            .store
-            .list_audit_exports_by_status(AuditExportStatus::Requested, self.poll_limit)
-            .await?;
-        let mut processed = 0usize;
-
-        for export in exports {
-            processed += 1;
-            self.store
-                .mark_audit_export(export.id, AuditExportStatus::Processing, None, None)
-                .await?;
-            match self.exporter.export(&export).await {
-                Ok(path) => {
-                    self.store
-                        .mark_audit_export(export.id, AuditExportStatus::Completed, Some(&path), None)
-                        .await?;
-                }
-                Err(error) => {
-                    self.store
-                        .mark_audit_export(
-                            export.id,
-                            AuditExportStatus::Failed,
-                            None,
-                            Some(&error.to_string()),
+                            Some(&err.to_string()),
                         )
                         .await?;
                 }
@@ -226,7 +152,6 @@ pub async fn spawn_default_workers(store: Store) {
         }
     };
     let dispatcher = Arc::new(HttpWebhookDispatcher::default());
-    let exporter = Arc::new(JsonAuditExporter);
 
     let operation_worker = OperationExecutorWorker {
         store: store.clone(),
@@ -234,15 +159,10 @@ pub async fn spawn_default_workers(store: Store) {
         poll_limit: 25,
     };
     let webhook_worker = WebhookRetryWorker {
-        store: store.clone(),
+        store,
         dispatcher,
         poll_limit: 25,
         max_attempts: 5,
-    };
-    let audit_worker = AuditExportWorker {
-        store,
-        exporter,
-        poll_limit: 10,
     };
 
     tokio::spawn(async move {
@@ -260,15 +180,6 @@ pub async fn spawn_default_workers(store: Store) {
                 error!(?error, "webhook worker tick failed");
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
-        }
-    });
-
-    tokio::spawn(async move {
-        loop {
-            if let Err(error) = audit_worker.run_once().await {
-                error!(?error, "audit worker tick failed");
-            }
-            tokio::time::sleep(Duration::from_secs(5)).await;
         }
     });
 }

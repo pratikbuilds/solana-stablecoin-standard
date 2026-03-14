@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use serde_json::json;
 use sss_db::Store;
-use sss_domain::{ChainEvent, EventSource};
+use sss_domain::{EventFilters, EventSort, InsertEvent, SortOrder};
 use sss_indexer::{IndexerConfig, IndexerService};
 use tempfile::TempDir;
 
@@ -167,11 +167,12 @@ fn start_postgres() -> Result<PostgresHarness> {
 }
 
 #[tokio::test]
-async fn indexer_ingests_events_into_projections() -> Result<()> {
+async fn indexer_ingests_events() -> Result<()> {
     let harness = start_postgres()?;
     let service = IndexerService::new(IndexerConfig {
         database_url: harness.database_url(),
         rpc_url: "https://api.devnet.solana.com".to_string(),
+        indexer_rpc_url: None,
         stablecoin_program_id: "stablecoin".to_string(),
         transfer_hook_program_id: "transfer-hook".to_string(),
         start_slot: 0,
@@ -179,109 +180,73 @@ async fn indexer_ingests_events_into_projections() -> Result<()> {
     })
     .await?;
 
-    service
-        .ingest_chain_event(&ChainEvent {
-            event_uid: "evt-init".to_string(),
-            program_id: "stablecoin".to_string(),
-            mint: Some("mint-1".to_string()),
-            event_source: EventSource::AnchorEvent,
+    let events = [
+        InsertEvent {
             event_type: "StablecoinInitialized".to_string(),
-            slot: 1,
+            program_id: Some("stablecoin".to_string()),
+            mint: Some("mint-1".to_string()),
             tx_signature: "sig-1".to_string(),
-            instruction_index: 0,
-            inner_instruction_index: None,
-            event_index: Some(0),
+            slot: 1,
             block_time: Some(Utc::now()),
-            payload: json!({
+            instruction_index: 0,
+            data: json!({
                 "mint":"mint-1",
                 "authority":"auth-1",
                 "preset":"SSS-2",
                 "name":"Regulated USD",
                 "symbol":"RUSD",
-                "uri":"https://example.com",
-                "decimals": 6,
-                "enable_permanent_delegate": true,
-                "enable_transfer_hook": true,
-                "default_account_frozen": true
             }),
-        })
-        .await?;
-    service
-        .ingest_chain_event(&ChainEvent {
-            event_uid: "evt-blacklist".to_string(),
-            program_id: "stablecoin".to_string(),
-            mint: Some("mint-1".to_string()),
-            event_source: EventSource::AnchorEvent,
+        },
+        InsertEvent {
             event_type: "AddressBlacklisted".to_string(),
-            slot: 2,
+            program_id: Some("stablecoin".to_string()),
+            mint: Some("mint-1".to_string()),
             tx_signature: "sig-2".to_string(),
-            instruction_index: 0,
-            inner_instruction_index: None,
-            event_index: Some(0),
+            slot: 2,
             block_time: Some(Utc::now()),
-            payload: json!({
+            instruction_index: 0,
+            data: json!({
                 "mint":"mint-1",
                 "wallet":"wallet-1",
                 "authority":"auth-1",
                 "reason":"screening"
             }),
-        })
-        .await?;
-    service
-        .ingest_chain_event(&ChainEvent {
-            event_uid: "evt-minter".to_string(),
-            program_id: "stablecoin".to_string(),
-            mint: Some("mint-1".to_string()),
-            event_source: EventSource::AnchorEvent,
-            event_type: "MinterUpdated".to_string(),
-            slot: 3,
-            tx_signature: "sig-3".to_string(),
-            instruction_index: 0,
-            inner_instruction_index: None,
-            event_index: Some(0),
-            block_time: Some(Utc::now()),
-            payload: json!({
-                "mint":"mint-1",
-                "minter":"auth-1",
-                "quota":"1000000",
-                "minted":"0",
-                "active":true
-            }),
-        })
-        .await?;
-    service
-        .ingest_chain_event(&ChainEvent {
-            event_uid: "evt-mint".to_string(),
-            program_id: "stablecoin".to_string(),
-            mint: Some("mint-1".to_string()),
-            event_source: EventSource::AnchorEvent,
+        },
+        InsertEvent {
             event_type: "TokensMinted".to_string(),
-            slot: 4,
-            tx_signature: "sig-4".to_string(),
-            instruction_index: 0,
-            inner_instruction_index: None,
-            event_index: Some(0),
+            program_id: Some("stablecoin".to_string()),
+            mint: Some("mint-1".to_string()),
+            tx_signature: "sig-3".to_string(),
+            slot: 3,
             block_time: Some(Utc::now()),
-            payload: json!({
+            instruction_index: 0,
+            data: json!({
                 "mint":"mint-1",
                 "authority":"auth-1",
                 "amount":"250000"
             }),
-        })
-        .await?;
+        },
+    ];
+
+    for event in &events {
+        service.ingest_event(event).await?;
+    }
 
     let store = Store::connect(&harness.database_url()).await?;
-    let mint = store.get_mint("mint-1").await?.expect("mint projection");
-    assert_eq!(mint.symbol, "RUSD");
-    assert_eq!(mint.total_minted, 250_000);
-    let blacklist = store.list_blacklist_entries("mint-1").await?;
-    assert_eq!(blacklist.len(), 1);
-    let quota = store
-        .get_minter_quota("mint-1", "auth-1")
-        .await?
-        .expect("minter quota projection");
-    assert_eq!(quota.minted, 250_000);
-    let events = store.list_chain_events("mint-1", 10).await?;
-    assert_eq!(events.len(), 4);
+    let (listed, total) = store
+        .list_events(
+            Some("mint-1"),
+            &EventFilters::default(),
+            EventSort::Slot,
+            SortOrder::Asc,
+            10,
+            0,
+        )
+        .await?;
+    assert_eq!(listed.len(), 3);
+    assert_eq!(total, 3);
+    assert_eq!(listed[0].event_type, "StablecoinInitialized");
+    assert_eq!(listed[1].event_type, "AddressBlacklisted");
+    assert_eq!(listed[2].event_type, "TokensMinted");
     Ok(())
 }

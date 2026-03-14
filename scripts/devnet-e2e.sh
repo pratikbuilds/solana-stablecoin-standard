@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Full DevNet E2E: deploy (optional), create preset + credentials, run API mint flow test.
-# Requires: DATABASE_URL, SOLANA_RPC_URL (or default devnet).
-# Optional: TEST_DATABASE_ADMIN_URL to create a temporary DB.
+# Full DevNet E2E: deploy (optional), create preset + credentials, run indexer + API smoke test.
+# Requires: DATABASE_URL (or TEST_DATABASE_ADMIN_URL), SOLANA_RPC_URL (or default devnet).
+# Optional: SSS_RUN_INDEXER=1 to run indexer briefly before API test (populates events table).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -29,12 +29,14 @@ MINT=$(jq -r .mint "$CREDS")
 TARGET_ATA=$(jq -r .targetAta "$CREDS")
 AUTHORITY_KEYPAIR=$(jq -r .authorityKeypairPath "$CREDS")
 STABLECOIN_PROGRAM_ID=$(jq -r .stablecoinProgramId "$PROGRAM_IDS")
+TRANSFER_HOOK_PROGRAM_ID=$(jq -r .transferHookProgramId "$PROGRAM_IDS")
 
 export SSS_DEVNET_E2E=1
 export SSS_DEVNET_MINT="$MINT"
 export SSS_DEVNET_TARGET_ATA="$TARGET_ATA"
 export SSS_AUTHORITY_KEYPAIR="$AUTHORITY_KEYPAIR"
 export SSS_STABLECOIN_PROGRAM_ID="$STABLECOIN_PROGRAM_ID"
+export SSS_TRANSFER_HOOK_PROGRAM_ID="$TRANSFER_HOOK_PROGRAM_ID"
 
 if [[ -z "${DATABASE_URL:-}" ]]; then
   if [[ -n "${TEST_DATABASE_ADMIN_URL:-}" ]]; then
@@ -45,6 +47,14 @@ if [[ -z "${DATABASE_URL:-}" ]]; then
   else
     echo "No DATABASE_URL or TEST_DATABASE_ADMIN_URL: test will start ephemeral Postgres."
   fi
+fi
+
+if [[ "${SSS_RUN_INDEXER:-0}" == "1" && -n "${DATABASE_URL:-}" ]]; then
+  echo "Running indexer against devnet (30s) to populate events..."
+  export SSS_START_SLOT=0
+  export SSS_DISABLE_BLOCK_SUBSCRIBE=1
+  timeout 30 cargo run -p sss-indexer --bin sss-indexer 2>/dev/null || true
+  echo "Indexer run complete."
 fi
 
 echo "Running devnet E2E test (mint request → approve → execute → worker submits tx)..."

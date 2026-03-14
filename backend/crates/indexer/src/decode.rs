@@ -3,7 +3,7 @@ use carbon_stablecoin_decoder::instructions::cpi_event::CpiEvent;
 use chrono::Utc;
 use serde_json::Value;
 use solana_sdk::instruction::AccountMeta;
-use sss_domain::{ChainEvent, EventSource};
+use sss_domain::InsertEvent;
 
 pub fn synthesize_transfer_hook_event(
     mint: String,
@@ -11,20 +11,16 @@ pub fn synthesize_transfer_hook_event(
     slot: i64,
     event_type: &str,
     payload: Value,
-) -> ChainEvent {
-    ChainEvent {
-        event_uid: format!("transfer-hook:{slot}:{tx_signature}:{event_type}"),
-        program_id: "transfer-hook".to_string(),
-        mint: Some(mint),
-        event_source: EventSource::SyntheticTransferHook,
+) -> InsertEvent {
+    InsertEvent {
         event_type: event_type.to_string(),
-        slot,
+        program_id: Some("transfer-hook".to_string()),
+        mint: Some(mint),
         tx_signature,
-        instruction_index: 0,
-        inner_instruction_index: None,
-        event_index: None,
+        slot,
         block_time: Some(Utc::now()),
-        payload,
+        instruction_index: 0,
+        data: payload,
     }
 }
 
@@ -35,25 +31,19 @@ pub(crate) fn decode_stablecoin_cpi_event(
     block_time: Option<i64>,
     instruction_index: i32,
     data_base64: &str,
-) -> Option<ChainEvent> {
+) -> Option<InsertEvent> {
     let bytes = base64::engine::general_purpose::STANDARD.decode(data_base64).ok()?;
     let (event_type, mint, payload) = decode_stablecoin_event_payload(&bytes)?;
 
-    Some(ChainEvent {
-        event_uid: format!(
-            "{stablecoin_program_id}:{slot}:{tx_signature}:{instruction_index}::0:{event_type}"
-        ),
-        program_id: stablecoin_program_id.to_string(),
-        mint: Some(mint),
-        event_source: EventSource::AnchorEvent,
+    Some(InsertEvent {
         event_type: event_type.to_string(),
-        slot,
+        program_id: Some(stablecoin_program_id.to_string()),
+        mint: Some(mint),
         tx_signature: tx_signature.to_string(),
-        instruction_index,
-        inner_instruction_index: None,
-        event_index: Some(0),
+        slot,
         block_time: block_time.and_then(timestamp_to_datetime),
-        payload,
+        instruction_index,
+        data: payload,
     })
 }
 
@@ -64,7 +54,7 @@ pub(crate) fn synthesize_transfer_hook_from_instruction(
     logs: &[String],
     accounts: &[AccountMeta],
     transfer_hook_program_id: &str,
-) -> Option<ChainEvent> {
+) -> Option<InsertEvent> {
     let mint = accounts.get(1)?.pubkey.to_string();
     let source = accounts.first().map(|account| account.pubkey.to_string());
     let destination = accounts.get(2).map(|account| account.pubkey.to_string());
@@ -78,19 +68,15 @@ pub(crate) fn synthesize_transfer_hook_from_instruction(
         "transfer_checked"
     };
 
-    Some(ChainEvent {
-        event_uid: format!("{transfer_hook_program_id}:{slot}:{tx_signature}:0::0:{event_type}"),
-        program_id: transfer_hook_program_id.to_string(),
-        mint: Some(mint.clone()),
-        event_source: EventSource::SyntheticTransferHook,
+    Some(InsertEvent {
         event_type: event_type.to_string(),
-        slot,
+        program_id: Some(transfer_hook_program_id.to_string()),
+        mint: Some(mint.clone()),
         tx_signature: tx_signature.to_string(),
-        instruction_index: 0,
-        inner_instruction_index: None,
-        event_index: Some(0),
+        slot,
         block_time: block_time.and_then(timestamp_to_datetime),
-        payload: serde_json::json!({
+        instruction_index: 0,
+        data: serde_json::json!({
             "mint": mint,
             "source_token_account": source,
             "destination_token_account": destination,

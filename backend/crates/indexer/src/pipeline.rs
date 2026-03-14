@@ -30,23 +30,21 @@ use crate::{
 };
 
 pub(crate) async fn run_live(service: &IndexerService) -> Result<()> {
+    let stablecoin_cursor = serde_json::json!({
+        "program_id": service.config.stablecoin_program_id,
+        "slot": service.config.start_slot,
+    });
+    let transfer_hook_cursor = serde_json::json!({
+        "program_id": service.config.transfer_hook_program_id,
+        "slot": service.config.start_slot,
+    });
     service
         .store
-        .upsert_checkpoint(
-            "stablecoin-main",
-            &service.config.stablecoin_program_id,
-            service.config.start_slot,
-            None,
-        )
+        .upsert_indexer_state("stablecoin-main", &stablecoin_cursor)
         .await?;
     service
         .store
-        .upsert_checkpoint(
-            "transfer-hook-main",
-            &service.config.transfer_hook_program_id,
-            service.config.start_slot,
-            None,
-        )
+        .upsert_indexer_state("transfer-hook-main", &transfer_hook_cursor)
         .await?;
 
     let mut builder = Pipeline::builder().transaction::<IndexedInstruction, ()>(
@@ -263,7 +261,7 @@ impl Processor for CarbonTransactionProcessor {
                     data_base64,
                 ) {
                     self.service
-                        .ingest_chain_event(&event)
+                        .ingest_event(&event)
                         .await
                         .map_err(|err| carbon_core::error::Error::Custom(err.to_string()))?;
                 }
@@ -283,22 +281,32 @@ impl Processor for CarbonTransactionProcessor {
                 &transfer_hook_program_id,
             ) {
                 self.service
-                    .ingest_chain_event(&event)
+                    .ingest_event(&event)
                     .await
                     .map_err(|err| carbon_core::error::Error::Custom(err.to_string()))?;
             }
         }
 
+        let stablecoin_cursor = serde_json::json!({
+            "program_id": stablecoin_program_id,
+            "slot": metadata.slot as i64,
+            "signature": metadata.signature.to_string(),
+        });
+        let transfer_hook_cursor = serde_json::json!({
+            "program_id": transfer_hook_program_id,
+            "slot": metadata.slot as i64,
+            "signature": metadata.signature.to_string(),
+        });
         self.service
             .store
-            .upsert_checkpoint(
-                "stablecoin-main",
-                &stablecoin_program_id,
-                metadata.slot as i64,
-                Some(&metadata.signature.to_string()),
-            )
+            .upsert_indexer_state("stablecoin-main", &stablecoin_cursor)
             .await
-            .map_err(|err| carbon_core::error::Error::Custom(err.to_string()))?;
+            .map_err(|err: anyhow::Error| carbon_core::error::Error::Custom(err.to_string()))?;
+        self.service
+            .store
+            .upsert_indexer_state("transfer-hook-main", &transfer_hook_cursor)
+            .await
+            .map_err(|err: anyhow::Error| carbon_core::error::Error::Custom(err.to_string()))?;
 
         Ok(())
     }

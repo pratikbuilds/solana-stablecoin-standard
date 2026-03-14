@@ -13,9 +13,8 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use stablecoin_client::instructions::{BurnBuilder, MintBuilder};
-use uuid::Uuid;
 use sss_domain::{
-    OperationExecutionResult, OperationKind, OperationRequest, SignerBackend, WorkerError,
+    LifecycleExecutionResult, LifecycleRequest, LifecycleRequestType, SignerBackend, WorkerError,
 };
 
 // Seeds match programs/stablecoin (sss-common) and Anchor event_authority
@@ -123,27 +122,26 @@ impl AuthorityKeypairSigner {
         pubkey_to_address(&self.program_id)
     }
 
-    fn execute_mint(&self, operation: &OperationRequest) -> Result<OperationExecutionResult, WorkerError> {
-        let mint = Pubkey::from_str(&operation.mint)
+    fn execute_mint(&self, request: &LifecycleRequest) -> Result<LifecycleExecutionResult, WorkerError> {
+        let mint = Pubkey::from_str(&request.mint)
             .map_err(|e| WorkerError::Dependency(format!("invalid mint pubkey: {}", e)))?;
-        let amount = operation
-            .amount
-            .and_then(|a| u64::try_from(a).ok())
-            .filter(|&a| a > 0)
+        let amount = u64::try_from(request.amount)
+            .ok()
+            .and_then(|a| if a > 0 { Some(a) } else { None })
             .ok_or_else(|| WorkerError::Dependency("mint requires positive amount".to_string()))?;
         let authority = self.keypair.pubkey();
-        let to_token_account = operation
-            .target_token_account
+        let to_token_account = request
+            .token_account
             .as_ref()
             .map(|s| Pubkey::from_str(s))
             .transpose()
-            .map_err(|e| WorkerError::Dependency(format!("invalid target_token_account: {}", e)))?
+            .map_err(|e| WorkerError::Dependency(format!("invalid token_account: {}", e)))?
             .unwrap_or_else(|| {
-                let wallet = operation
-                    .target_wallet
+                let wallet = request
+                    .recipient
                     .as_ref()
                     .and_then(|s| Pubkey::from_str(s).ok())
-                    .expect("mint requires target_wallet or target_token_account");
+                    .expect("mint requires recipient or token_account");
                 associated_token_address(&wallet, &mint)
             });
 
@@ -163,24 +161,23 @@ impl AuthorityKeypairSigner {
             .amount(amount)
             .instruction();
 
-        self.send_transaction(operation.id, &[to_sdk_instruction(ix)])
+        self.send_transaction(&request.id, &[to_sdk_instruction(ix)])
     }
 
-    fn execute_burn(&self, operation: &OperationRequest) -> Result<OperationExecutionResult, WorkerError> {
-        let mint = Pubkey::from_str(&operation.mint)
+    fn execute_burn(&self, request: &LifecycleRequest) -> Result<LifecycleExecutionResult, WorkerError> {
+        let mint = Pubkey::from_str(&request.mint)
             .map_err(|e| WorkerError::Dependency(format!("invalid mint pubkey: {}", e)))?;
-        let amount = operation
-            .amount
-            .and_then(|a| u64::try_from(a).ok())
-            .filter(|&a| a > 0)
+        let amount = u64::try_from(request.amount)
+            .ok()
+            .and_then(|a| if a > 0 { Some(a) } else { None })
             .ok_or_else(|| WorkerError::Dependency("burn requires positive amount".to_string()))?;
         let authority = self.keypair.pubkey();
-        let from_token_account = operation
-            .target_token_account
+        let from_token_account = request
+            .token_account
             .as_ref()
             .map(|s| Pubkey::from_str(s))
             .transpose()
-            .map_err(|e| WorkerError::Dependency(format!("invalid target_token_account: {}", e)))?
+            .map_err(|e| WorkerError::Dependency(format!("invalid token_account: {}", e)))?
             .unwrap_or_else(|| associated_token_address(&authority, &mint));
 
         let program_addr = self.program_id_address();
@@ -199,14 +196,14 @@ impl AuthorityKeypairSigner {
             .amount(amount)
             .instruction();
 
-        self.send_transaction(operation.id, &[to_sdk_instruction(ix)])
+        self.send_transaction(&request.id, &[to_sdk_instruction(ix)])
     }
 
     fn send_transaction(
         &self,
-        operation_id: Uuid,
+        request_id: &str,
         instructions: &[SdkInstruction],
-    ) -> Result<OperationExecutionResult, WorkerError> {
+    ) -> Result<LifecycleExecutionResult, WorkerError> {
         let client = RpcClient::new_with_commitment(
             self.rpc_url.clone(),
             CommitmentConfig::confirmed(),
@@ -214,8 +211,17 @@ impl AuthorityKeypairSigner {
         let recent = client
             .get_latest_blockhash()
             .map_err(|e| WorkerError::Dependency(format!("get_latest_blockhash: {}", e)))?;
+        // Override program_id: generated client uses build-time ID; we use SSS_STABLECOIN_PROGRAM_ID
+        let instructions: Vec<_> = instructions
+            .iter()
+            .map(|ix| SdkInstruction {
+                program_id: self.program_id,
+                accounts: ix.accounts.clone(),
+                data: ix.data.clone(),
+            })
+            .collect();
         let tx = Transaction::new_signed_with_payer(
-            instructions,
+            &instructions,
             Some(&self.keypair.pubkey()),
             &[&self.keypair],
             recent,
@@ -223,8 +229,8 @@ impl AuthorityKeypairSigner {
         let sig = client
             .send_and_confirm_transaction(&tx)
             .map_err(|e| WorkerError::Dependency(format!("send_and_confirm: {}", e)))?;
-        Ok(OperationExecutionResult {
-            operation_id,
+        Ok(LifecycleExecutionResult {
+            request_id: request_id.to_string(),
             tx_signature: sig.to_string(),
         })
     }
@@ -252,14 +258,10 @@ impl SignerBackend for AuthorityKeypairSigner {
         "authority_keypair"
     }
 
-    async fn execute(&self, operation: &OperationRequest) -> Result<OperationExecutionResult, WorkerError> {
-        match operation.kind {
-            OperationKind::Mint => self.execute_mint(operation),
-            OperationKind::Burn => self.execute_burn(operation),
-            _ => Err(WorkerError::Dependency(format!(
-                "authority signer only supports mint and burn, got {}",
-                operation.kind.as_str()
-            ))),
+    async fn execute(&self, request: &LifecycleRequest) -> Result<LifecycleExecutionResult, WorkerError> {
+        match request.type_ {
+            LifecycleRequestType::Mint => self.execute_mint(request),
+            LifecycleRequestType::Burn => self.execute_burn(request),
         }
     }
 }

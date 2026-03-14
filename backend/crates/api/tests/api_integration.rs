@@ -14,19 +14,18 @@ use axum::{
     http::{Request, StatusCode},
 };
 use chrono::Utc;
-use serde_json::{json, Value};
-use sss_api::{
-    AuthorityKeypairSigner, build_router, AppState, AuditExportWorker, OperationExecutorWorker,
-    WebhookRetryWorker,
-};
+use serde_json::json;
+use sss_api::{build_router, AppState, OperationExecutorWorker, WebhookRetryWorker};
 use sss_db::Store;
 use sss_domain::{
-    AuditExport, AuditExporter, CreateAuditExport, CreateOperationRequest, CreateWebhookEndpoint,
-    MintRecord, OperationExecutionResult, OperationKind, OperationRequest, SignerBackend,
-    WebhookDelivery, WebhookDeliveryStatus, WebhookDispatcher, WorkerError,
+    CreateLifecycleRequest, CreateWebhookSubscription, EventRecord, EventSort, InsertEvent,
+    LifecycleExecutionResult, LifecycleRequest, LifecycleRequestType, LifecycleStatus,
+    SignerBackend, SortOrder, WebhookDelivery, WebhookDeliveryStatus, WebhookDispatcher,
+    WebhookSubscription, WorkerError,
 };
 use tempfile::TempDir;
 use tower::util::ServiceExt;
+use uuid::Uuid;
 
 struct PostgresHarness {
     _dir: Option<TempDir>,
@@ -185,24 +184,15 @@ async fn seeded_store() -> Result<(PostgresHarness, Store)> {
     let store = Store::connect(&harness.database_url()).await?;
     store.migrate().await?;
     store
-        .upsert_mint(&MintRecord {
-            mint: "mint-1".to_string(),
-            preset: "SSS-2".to_string(),
-            authority: "auth-1".to_string(),
-            name: "Regulated USD".to_string(),
-            symbol: "RUSD".to_string(),
-            uri: "https://example.com".to_string(),
-            decimals: 6,
-            enable_permanent_delegate: true,
-            enable_transfer_hook: true,
-            default_account_frozen: true,
-            paused: false,
-            total_minted: 0,
-            total_burned: 0,
-            created_at: Utc::now(),
-            last_changed_by: "auth-1".to_string(),
-            last_changed_at: Utc::now(),
-            indexed_slot: 1,
+        .insert_event(&InsertEvent {
+            event_type: "TokensMinted".to_string(),
+            program_id: Some("program".to_string()),
+            mint: Some("mint-1".to_string()),
+            tx_signature: "sig-1".to_string(),
+            slot: 10,
+            block_time: Some(Utc::now()),
+            instruction_index: 0,
+            data: json!({"mint":"mint-1","authority":"auth-1","amount":"100"}),
         })
         .await?;
     Ok((harness, store))
@@ -216,10 +206,10 @@ impl SignerBackend for MockSigner {
         "mock"
     }
 
-    async fn execute(&self, operation: &OperationRequest) -> Result<OperationExecutionResult, WorkerError> {
-        Ok(OperationExecutionResult {
-            operation_id: operation.id,
-            tx_signature: format!("sig-{}", operation.id),
+    async fn execute(&self, request: &LifecycleRequest) -> Result<LifecycleExecutionResult, WorkerError> {
+        Ok(LifecycleExecutionResult {
+            request_id: request.id.clone(),
+            tx_signature: format!("sig-{}", request.id),
         })
     }
 }
@@ -232,8 +222,9 @@ struct MockDispatcher {
 impl WebhookDispatcher for MockDispatcher {
     async fn deliver(
         &self,
-        _endpoint: &sss_domain::WebhookEndpoint,
+        _subscription: &WebhookSubscription,
         _delivery: &WebhookDelivery,
+        _event: &EventRecord,
     ) -> Result<Option<i32>, WorkerError> {
         if self.fail {
             Err(WorkerError::Dependency("dispatch failed".to_string()))
@@ -243,46 +234,9 @@ impl WebhookDispatcher for MockDispatcher {
     }
 }
 
-struct MockExporter;
-
-#[async_trait]
-impl AuditExporter for MockExporter {
-    async fn export(&self, export: &AuditExport) -> Result<String, WorkerError> {
-        Ok(format!("exports/{}.json", export.id))
-    }
-}
-
 #[tokio::test]
 async fn api_routes_cover_core_paths() -> Result<()> {
     let (_harness, store) = seeded_store().await?;
-    store
-        .insert_chain_event(&sss_domain::ChainEvent {
-            event_uid: "evt-1".to_string(),
-            program_id: "program".to_string(),
-            mint: Some("mint-1".to_string()),
-            event_source: sss_domain::EventSource::AnchorEvent,
-            event_type: "TokensMinted".to_string(),
-            slot: 10,
-            tx_signature: "sig-1".to_string(),
-            instruction_index: 0,
-            inner_instruction_index: None,
-            event_index: Some(0),
-            block_time: Some(Utc::now()),
-            payload: json!({"mint":"mint-1","authority":"auth-1","amount":"100"}),
-        })
-        .await?;
-    store
-        .upsert_blacklist_entry(&sss_domain::BlacklistEntryRecord {
-            mint: "mint-1".to_string(),
-            wallet: "wallet-1".to_string(),
-            reason: "screened".to_string(),
-            blacklisted_by: "auth-1".to_string(),
-            blacklisted_at: Utc::now(),
-            active: true,
-            removed_at: None,
-            indexed_slot: 11,
-        })
-        .await?;
 
     let app = build_router(AppState { store: store.clone() });
 
@@ -294,36 +248,11 @@ async fn api_routes_cover_core_paths() -> Result<()> {
 
     let response = app
         .clone()
-        .oneshot(Request::builder().uri("/v1/mints").body(Body::empty()).unwrap())
-        .await?;
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let response = app
-        .clone()
-        .oneshot(Request::builder().uri("/v1/mints/mint-1").body(Body::empty()).unwrap())
-        .await?;
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let response = app
-        .clone()
         .oneshot(Request::builder().uri("/v1/mints/mint-1/events").body(Body::empty()).unwrap())
         .await?;
     assert_eq!(response.status(), StatusCode::OK);
 
-    let response = app
-        .clone()
-        .oneshot(Request::builder().uri("/v1/mints/mint-1/blacklist").body(Body::empty()).unwrap())
-        .await?;
-    assert_eq!(response.status(), StatusCode::OK);
-
-    for (uri, kind) in [
-        ("/v1/mint-requests", OperationKind::Mint),
-        ("/v1/burn-requests", OperationKind::Burn),
-        ("/v1/compliance/blacklists", OperationKind::BlacklistAdd),
-        ("/v1/compliance/freeze", OperationKind::Freeze),
-        ("/v1/compliance/thaw", OperationKind::Thaw),
-        ("/v1/compliance/seize", OperationKind::Seize),
-    ] {
+    for uri in ["/v1/mint-requests", "/v1/burn-requests"] {
         let response = app
             .clone()
             .oneshot(
@@ -334,14 +263,13 @@ async fn api_routes_cover_core_paths() -> Result<()> {
                     .body(Body::from(
                         serde_json::to_vec(&json!({
                             "mint": "mint-1",
-                            "target_wallet": "wallet-1",
-                            "target_token_account": "ata-1",
+                            "recipient": "wallet-1",
+                            "token_account": null,
                             "amount": 100,
+                            "minter": null,
                             "reason": "ops",
-                            "external_reference": "ref-1",
-                            "idempotency_key": format!("{}-1", kind.as_str()),
-                            "requested_by": "tester",
-                            "metadata": {}
+                            "idempotency_key": format!("{}-1", uri),
+                            "requested_by": "tester"
                         }))?,
                     ))
                     .unwrap(),
@@ -350,31 +278,22 @@ async fn api_routes_cover_core_paths() -> Result<()> {
         assert_eq!(response.status(), StatusCode::CREATED, "{uri}");
     }
 
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/v1/compliance/blacklists/mint-1/wallet-2")
-                .body(Body::empty())
-                .unwrap(),
+    let request_id = Uuid::new_v4().to_string();
+    store
+        .create_lifecycle_request(
+            &request_id,
+            &CreateLifecycleRequest {
+                type_: LifecycleRequestType::Mint,
+                mint: "mint-1".to_string(),
+                recipient: Some("wallet-3".to_string()),
+                token_account: Some("ata-3".to_string()),
+                amount: 500,
+                minter: None,
+                reason: Some("seed".to_string()),
+                idempotency_key: Some("seed-op".to_string()),
+                requested_by: "tester".to_string(),
+            },
         )
-        .await?;
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    let operation = store
-        .create_operation_request(&CreateOperationRequest {
-            kind: OperationKind::Mint,
-            mint: "mint-1".to_string(),
-            target_wallet: Some("wallet-3".to_string()),
-            target_token_account: Some("ata-3".to_string()),
-            amount: Some(500),
-            reason: Some("seed".to_string()),
-            external_reference: None,
-            idempotency_key: "seed-op".to_string(),
-            requested_by: "tester".to_string(),
-            metadata: json!({}),
-        })
         .await?;
 
     let response = app
@@ -382,7 +301,7 @@ async fn api_routes_cover_core_paths() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/v1/operations/{}/approve", operation.id))
+                .uri(format!("/v1/operations/{}/approve", request_id))
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&json!({"approved_by":"ops"}))?))
                 .unwrap(),
@@ -395,7 +314,7 @@ async fn api_routes_cover_core_paths() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/v1/operations/{}/execute", operation.id))
+                .uri(format!("/v1/operations/{}/execute", request_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -406,7 +325,7 @@ async fn api_routes_cover_core_paths() -> Result<()> {
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!("/v1/operations/{}", operation.id))
+                .uri(format!("/v1/operations/{}", request_id))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -418,28 +337,13 @@ async fn api_routes_cover_core_paths() -> Result<()> {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/webhooks/endpoints")
-                .header("content-type", "application/json")
-                .body(Body::from(serde_json::to_vec(&CreateWebhookEndpoint {
-                    name: "ops".to_string(),
-                    url: "https://example.com/hook".to_string(),
-                    secret: "secret".to_string(),
-                    subscribed_event_types: vec!["TokensMinted".to_string()],
-                })?))
-                .unwrap(),
-        )
-        .await?;
-    assert_eq!(response.status(), StatusCode::CREATED);
-
-    let response = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/compliance/audit-exports")
+                .uri("/v1/webhooks/subscriptions")
                 .header("content-type", "application/json")
                 .body(Body::from(serde_json::to_vec(&json!({
-                    "requested_by":"tester",
-                    "filters": {"mint":"mint-1"}
+                    "name": "ops",
+                    "url": "https://example.com/hook",
+                    "events": ["TokensMinted"],
+                    "secret": "secret"
                 }))?))
                 .unwrap(),
         )
@@ -450,23 +354,28 @@ async fn api_routes_cover_core_paths() -> Result<()> {
 }
 
 #[tokio::test]
-async fn operation_worker_submits_approved_operations() -> Result<()> {
+async fn operation_worker_submits_approved_requests() -> Result<()> {
     let (_harness, store) = seeded_store().await?;
-    let operation = store
-        .create_operation_request(&CreateOperationRequest {
-            kind: OperationKind::Mint,
-            mint: "mint-1".to_string(),
-            target_wallet: Some("wallet-4".to_string()),
-            target_token_account: Some("ata-4".to_string()),
-            amount: Some(100),
-            reason: Some("worker".to_string()),
-            external_reference: None,
-            idempotency_key: "worker-op".to_string(),
-            requested_by: "tester".to_string(),
-            metadata: json!({}),
-        })
+    let request_id = Uuid::new_v4().to_string();
+    store
+        .create_lifecycle_request(
+            &request_id,
+            &CreateLifecycleRequest {
+                type_: LifecycleRequestType::Mint,
+                mint: "mint-1".to_string(),
+                recipient: Some("wallet-4".to_string()),
+                token_account: Some("ata-4".to_string()),
+                amount: 100,
+                minter: None,
+                reason: Some("worker".to_string()),
+                idempotency_key: Some("worker-op".to_string()),
+                requested_by: "tester".to_string(),
+            },
+        )
         .await?;
-    store.approve_operation(operation.id, "ops").await?;
+    store
+        .approve_lifecycle_request(&request_id, "ops")
+        .await?;
 
     let worker = OperationExecutorWorker {
         store: store.clone(),
@@ -476,49 +385,36 @@ async fn operation_worker_submits_approved_operations() -> Result<()> {
     let processed = worker.run_once().await?;
     assert_eq!(processed, 1);
 
-    let updated = store.get_operation_request(operation.id).await?.unwrap();
-    assert_eq!(updated.status, sss_domain::OperationStatus::Submitted);
+    let updated = store.get_lifecycle_request(&request_id).await?.unwrap();
+    assert_eq!(updated.status, LifecycleStatus::Finalized);
     assert!(updated.tx_signature.is_some());
-    let attempts = store.list_attempts(operation.id).await?;
-    assert_eq!(attempts.len(), 1);
-    assert_eq!(attempts[0].status, sss_domain::AttemptStatus::Submitted);
     Ok(())
 }
 
 #[tokio::test]
-async fn webhook_and_audit_workers_update_state() -> Result<()> {
+async fn webhook_worker_updates_state() -> Result<()> {
     let (_harness, store) = seeded_store().await?;
-    let endpoint = store
-        .create_webhook_endpoint(&CreateWebhookEndpoint {
-            name: "ops".to_string(),
+    let subscription = store
+        .create_webhook_subscription(&CreateWebhookSubscription {
+            name: Some("ops".to_string()),
             url: "https://example.com".to_string(),
-            secret: "secret".to_string(),
-            subscribed_event_types: vec!["TokensMinted".to_string()],
-        })
-        .await?;
-    store
-        .enqueue_webhook_delivery(&WebhookDelivery {
-            id: None,
-            webhook_endpoint_id: endpoint.id,
-            source_event_key: "evt-1".to_string(),
-            event_type: "TokensMinted".to_string(),
-            payload: json!({"mint":"mint-1"}),
-            status: WebhookDeliveryStatus::Pending,
-            attempt_count: 0,
-            next_attempt_at: None,
-            last_http_status: None,
-            last_error: None,
-            delivered_at: None,
-            created_at: Utc::now(),
+            events: vec!["TokensMinted".to_string()],
+            secret: Some("secret".to_string()),
         })
         .await?;
 
-    let export = store
-        .create_audit_export(&CreateAuditExport {
-            requested_by: "tester".to_string(),
-            filters: Value::Null,
-        })
+    let (events, _) = store
+        .list_events(
+            Some("mint-1"),
+            &Default::default(),
+            EventSort::Slot,
+            SortOrder::Asc,
+            10,
+            0,
+        )
         .await?;
+    let event_id = events.first().unwrap().id;
+    store.enqueue_webhook_delivery(subscription.id, event_id).await?;
 
     let webhook_worker = WebhookRetryWorker {
         store: store.clone(),
@@ -526,22 +422,11 @@ async fn webhook_and_audit_workers_update_state() -> Result<()> {
         poll_limit: 10,
         max_attempts: 3,
     };
-    let audit_worker = AuditExportWorker {
-        store: store.clone(),
-        exporter: Arc::new(MockExporter),
-        poll_limit: 10,
-    };
 
     assert_eq!(webhook_worker.run_once().await?, 1);
-    assert_eq!(audit_worker.run_once().await?, 1);
 
-    let deliveries = store.list_due_deliveries(Utc::now(), 10).await?;
+    let deliveries = store.list_due_webhook_deliveries(Utc::now(), 10).await?;
     assert!(deliveries.is_empty());
-    let exports = store
-        .list_audit_exports_by_status(sss_domain::AuditExportStatus::Completed, 10)
-        .await?;
-    assert_eq!(exports.len(), 1);
-    assert_eq!(exports[0].id, export.id);
     Ok(())
 }
 
@@ -549,7 +434,6 @@ async fn webhook_and_audit_workers_update_state() -> Result<()> {
 /// Requires: SSS_DEVNET_E2E=1, SOLANA_RPC_URL, SSS_STABLECOIN_PROGRAM_ID,
 /// SSS_AUTHORITY_SECRET_KEY (or SSS_AUTHORITY_KEYPAIR), SSS_DEVNET_MINT,
 /// SSS_DEVNET_TARGET_ATA or SSS_DEVNET_TARGET_WALLET.
-/// If DATABASE_URL is not set, starts an ephemeral Postgres (same as other integration tests).
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn devnet_e2e_mint_execution() -> Result<()> {
@@ -571,49 +455,32 @@ async fn devnet_e2e_mint_execution() -> Result<()> {
     if target_ata.is_none() && target_wallet.is_none() {
         anyhow::bail!("set SSS_DEVNET_TARGET_ATA or SSS_DEVNET_TARGET_WALLET");
     }
-    let signer = AuthorityKeypairSigner::from_env()
+    let signer = sss_api::AuthorityKeypairSigner::from_env()
         .map_err(|e| anyhow::anyhow!("AuthorityKeypairSigner::from_env: {}", e))?;
 
     let store = Store::connect(&database_url).await?;
     store.migrate().await?;
 
+    let request_id = Uuid::new_v4().to_string();
     store
-        .upsert_mint(&MintRecord {
-            mint: mint_pubkey.clone(),
-            preset: "SSS-1".to_string(),
-            authority: signer.name().to_string(),
-            name: "E2E USD".to_string(),
-            symbol: "E2E".to_string(),
-            uri: "https://example.com/e2e".to_string(),
-            decimals: 6,
-            enable_permanent_delegate: false,
-            enable_transfer_hook: false,
-            default_account_frozen: false,
-            paused: false,
-            total_minted: 0,
-            total_burned: 0,
-            created_at: Utc::now(),
-            last_changed_by: signer.name().to_string(),
-            last_changed_at: Utc::now(),
-            indexed_slot: 0,
-        })
+        .create_lifecycle_request(
+            &request_id,
+            &CreateLifecycleRequest {
+                type_: LifecycleRequestType::Mint,
+                mint: mint_pubkey.clone(),
+                recipient: target_wallet.clone(),
+                token_account: target_ata.clone(),
+                amount: 1_000_000,
+                minter: None,
+                reason: Some("devnet-e2e".to_string()),
+                idempotency_key: Some(format!("e2e-{}", std::process::id())),
+                requested_by: "e2e-test".to_string(),
+            },
+        )
         .await?;
-
-    let operation = store
-        .create_operation_request(&CreateOperationRequest {
-            kind: OperationKind::Mint,
-            mint: mint_pubkey.clone(),
-            target_wallet: target_wallet.clone(),
-            target_token_account: target_ata.clone(),
-            amount: Some(1_000_000),
-            reason: Some("devnet-e2e".to_string()),
-            external_reference: None,
-            idempotency_key: format!("e2e-{}", std::process::id()),
-            requested_by: "e2e-test".to_string(),
-            metadata: json!({}),
-        })
+    store
+        .approve_lifecycle_request(&request_id, "e2e")
         .await?;
-    store.approve_operation(operation.id, "e2e").await?;
 
     let worker = OperationExecutorWorker {
         store: store.clone(),
@@ -628,17 +495,20 @@ async fn devnet_e2e_mint_execution() -> Result<()> {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
-    let updated = store.get_operation_request(operation.id).await?.context("operation gone")?;
+    let updated = store
+        .get_lifecycle_request(&request_id)
+        .await?
+        .context("request gone")?;
     assert_eq!(
         updated.status,
-        sss_domain::OperationStatus::Submitted,
-        "expected Submitted, got {:?}; tx_sig = {:?}",
+        LifecycleStatus::Finalized,
+        "expected Finalized, got {:?}; tx_sig = {:?}",
         updated.status,
         updated.tx_signature
     );
     assert!(
         updated.tx_signature.is_some(),
-        "operation should have tx_signature"
+        "request should have tx_signature"
     );
     Ok(())
 }

@@ -9501,6 +9501,7 @@ dependencies = [
  "thiserror 2.0.18",
  "toml 0.8.23",
  "transfer-hook",
+ "urlencoding",
  "uuid",
 ]
 
@@ -10327,6 +10328,12 @@ dependencies = [
  "percent-encoding",
  "serde",
 ]
+
+[[package]]
+name = "urlencoding"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "utf-8"
