@@ -3,34 +3,26 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use base64::Engine;
-use carbon_stablecoin_decoder::{
-    instructions::StablecoinInstruction,
-    StablecoinDecoder,
-};
 use carbon_core::{
-    collection::InstructionDecoderCollection,
-    error::CarbonResult,
-    instruction::InstructionDecoder,
-    instruction::DecodedInstruction,
-    metrics::MetricsCollection,
-    pipeline::Pipeline,
-    processor::Processor,
-    transaction::TransactionProcessorInputType,
+    collection::InstructionDecoderCollection, error::CarbonResult, instruction::DecodedInstruction,
+    instruction::InstructionDecoder, metrics::MetricsCollection, pipeline::Pipeline,
+    processor::Processor, transaction::TransactionProcessorInputType,
 };
 use carbon_rpc_block_crawler_datasource::{RpcBlockConfig, RpcBlockCrawler};
 use carbon_rpc_block_subscribe_datasource::{Filters, RpcBlockSubscribe};
+use carbon_rpc_transaction_crawler_datasource::{
+    ConnectionConfig, Filters as TxCrawlerFilters, RpcTransactionCrawler,
+};
+use carbon_stablecoin_decoder::{instructions::StablecoinInstruction, StablecoinDecoder};
 use solana_client::{
     nonblocking::rpc_client::RpcClient,
     rpc_config::{RpcBlockSubscribeConfig, RpcBlockSubscribeFilter},
 };
-use solana_sdk::{
-    commitment_config::CommitmentConfig,
-    instruction::Instruction,
-};
+use solana_sdk::{commitment_config::CommitmentConfig, instruction::Instruction};
 use solana_transaction_status::TransactionDetails;
 use solana_transaction_status_client_types::UiTransactionEncoding;
-use transfer_hook::ID as TRANSFER_HOOK_PROGRAM_ID;
 use tracing::info;
+use transfer_hook::ID as TRANSFER_HOOK_PROGRAM_ID;
 
 use crate::{
     decode::{decode_stablecoin_cpi_event, synthesize_transfer_hook_from_instruction},
@@ -64,30 +56,79 @@ pub(crate) async fn run_live(service: &IndexerService) -> Result<()> {
         None,
     );
 
+    let indexer_rpc = service
+        .config
+        .indexer_rpc_url
+        .as_deref()
+        .unwrap_or(&service.config.rpc_url);
+
     if !service.config.disable_block_subscribe {
-        let block_subscribe = RpcBlockSubscribe::new(
-            to_ws_url(&service.config.rpc_url),
-            Filters::new(
-                RpcBlockSubscribeFilter::All,
-                Some(RpcBlockSubscribeConfig {
+        if is_helius_rpc(indexer_rpc) {
+            let conn = ConnectionConfig {
+                batch_limit: 1000,
+                polling_interval: std::time::Duration::from_secs(5),
+                max_concurrent_requests: 4,
+                max_signature_channel_size: None,
+                max_transaction_channel_size: None,
+                retry_config: carbon_rpc_transaction_crawler_datasource::RetryConfig {
+                    max_retries: 5,
+                    initial_backoff_ms: 1000,
+                    max_backoff_ms: 30_000,
+                    backoff_multiplier: 2.0,
+                },
+                blocking_send: false,
+            };
+            let filters = TxCrawlerFilters {
+                accounts: None,
+                before_signature: None,
+                until_signature: None,
+            };
+            if let Ok(pk) = service.config.stablecoin_program_id.parse() {
+                let crawler = RpcTransactionCrawler {
+                    rpc_url: indexer_rpc.to_string(),
+                    account: pk,
+                    connection_config: conn.clone(),
+                    filters: filters.clone(),
                     commitment: Some(CommitmentConfig::confirmed()),
-                    encoding: Some(UiTransactionEncoding::Base64),
-                    transaction_details: Some(TransactionDetails::Full),
-                    show_rewards: Some(false),
-                    max_supported_transaction_version: Some(0),
-                }),
-            ),
-        );
-        builder = builder.datasource(block_subscribe);
+                };
+                builder = builder.datasource(crawler);
+            }
+            if let Ok(pk) = service.config.transfer_hook_program_id.parse() {
+                let crawler = RpcTransactionCrawler {
+                    rpc_url: indexer_rpc.to_string(),
+                    account: pk,
+                    connection_config: conn,
+                    filters,
+                    commitment: Some(CommitmentConfig::confirmed()),
+                };
+                builder = builder.datasource(crawler);
+            }
+            info!("using carbon-transaction-crawler datasource (Helius RPC)");
+        } else {
+            let block_subscribe = RpcBlockSubscribe::new(
+                to_ws_url(indexer_rpc),
+                Filters::new(
+                    RpcBlockSubscribeFilter::All,
+                    Some(RpcBlockSubscribeConfig {
+                        commitment: Some(CommitmentConfig::confirmed()),
+                        encoding: Some(UiTransactionEncoding::Base64),
+                        transaction_details: Some(TransactionDetails::Full),
+                        show_rewards: Some(false),
+                        max_supported_transaction_version: Some(0),
+                    }),
+                ),
+            );
+            builder = builder.datasource(block_subscribe);
+        }
     }
 
     if service.config.start_slot > 0 {
-        let latest_slot = RpcClient::new(service.config.rpc_url.clone())
+        let latest_slot = RpcClient::new(indexer_rpc.to_string())
             .get_slot()
             .await
             .unwrap_or(service.config.start_slot as u64);
         let block_crawler = RpcBlockCrawler::new(
-            service.config.rpc_url.clone(),
+            indexer_rpc.to_string(),
             service.config.start_slot as u64,
             Some(latest_slot),
             None,
@@ -105,7 +146,7 @@ pub(crate) async fn run_live(service: &IndexerService) -> Result<()> {
     }
 
     info!(
-        rpc_url = %service.config.rpc_url,
+        indexer_rpc = %indexer_rpc,
         stablecoin_program_id = %service.config.stablecoin_program_id,
         transfer_hook_program_id = %service.config.transfer_hook_program_id,
         start_slot = service.config.start_slot,
@@ -196,8 +237,10 @@ impl Processor for CarbonTransactionProcessor {
         let transfer_hook_program_id = self.service.config.transfer_hook_program_id.clone();
 
         let touches_relevant_program = instructions.iter().any(|(_, instruction)| {
-            matches!(instruction.data, IndexedInstruction::Stablecoin { .. } | IndexedInstruction::TransferHook)
-                || instruction.program_id.to_string() == stablecoin_program_id
+            matches!(
+                instruction.data,
+                IndexedInstruction::Stablecoin { .. } | IndexedInstruction::TransferHook
+            ) || instruction.program_id.to_string() == stablecoin_program_id
                 || instruction.program_id.to_string() == transfer_hook_program_id
         });
 
@@ -259,6 +302,10 @@ impl Processor for CarbonTransactionProcessor {
 
         Ok(())
     }
+}
+
+fn is_helius_rpc(rpc_url: &str) -> bool {
+    rpc_url.contains("helius-rpc.com")
 }
 
 fn to_ws_url(rpc_url: &str) -> String {

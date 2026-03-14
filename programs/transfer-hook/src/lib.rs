@@ -9,9 +9,9 @@ use spl_transfer_hook_interface::instruction::ExecuteInstruction;
 
 use sss_common::{SEED_BLACKLIST, SEED_CONFIG, SEED_EXTRA_ACCOUNT_METAS};
 
-declare_id!("6mjTtZjRFK8FWA24f2KNEfMVcAvpYLWcpMzLvKiVXyd2");
+declare_id!("6QNzPyTwg2MH778GL8idYiU3teFJiuQx6R5L7xdU17KC");
 
-const STABLECOIN_PROGRAM_ID: Pubkey = pubkey!("2MKyZ3ugkGyfConZAsqm3hwRoY6c2k7zwZaX1XCSHsJH");
+const STABLECOIN_PROGRAM_ID: Pubkey = pubkey!("Gbq8ZoZ4fE2J8wywFDYgSREPWL5qhtaneAX9PwQuQyCC");
 const INITIALIZE_EXTRA_ACCOUNT_META_LIST_DISCRIMINATOR: [u8; 8] =
     [43, 34, 13, 49, 167, 88, 235, 235];
 const EXECUTE_DISCRIMINATOR: [u8; 8] = [105, 37, 101, 197, 75, 251, 102, 26];

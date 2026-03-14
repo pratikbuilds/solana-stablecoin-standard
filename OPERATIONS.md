@@ -146,7 +146,6 @@ Optional indexer controls:
 
 - `SSS_STABLECOIN_PROGRAM_ID`
 - `SSS_TRANSFER_HOOK_PROGRAM_ID`
-- `SSS_START_SLOT`
 - `SSS_DISABLE_BLOCK_SUBSCRIBE`
 
 ## Incident Notes

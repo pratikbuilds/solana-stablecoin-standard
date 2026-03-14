@@ -1233,6 +1233,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "carbon-rpc-transaction-crawler-datasource"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cf4af246de4fac237e686f1d83941c42dd594df1f08de667ef73a230531ecef"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "carbon-core",
+ "futures",
+ "log",
+ "solana-client 2.2.4",
+ "solana-commitment-config 2.2.1",
+ "solana-pubkey 2.2.1",
+ "solana-signature 2.2.1",
+ "solana-transaction-status",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "carbon-stablecoin-decoder"
 version = "0.1.0"
 dependencies = [
@@ -9557,6 +9577,7 @@ dependencies = [
  "carbon-core",
  "carbon-rpc-block-crawler-datasource",
  "carbon-rpc-block-subscribe-datasource",
+ "carbon-rpc-transaction-crawler-datasource",
  "carbon-stablecoin-decoder",
  "chrono",
  "futures",

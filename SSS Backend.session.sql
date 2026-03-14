@@ -1,0 +1,1 @@
+SELECT * FROM minter_quotas LIMIT 10;

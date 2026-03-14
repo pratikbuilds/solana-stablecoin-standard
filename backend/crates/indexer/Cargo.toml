@@ -11,6 +11,7 @@ async-trait.workspace = true
 base64.workspace = true
 carbon-core.workspace = true
 carbon-rpc-block-crawler-datasource.workspace = true
+carbon-rpc-transaction-crawler-datasource.workspace = true
 carbon-rpc-block-subscribe-datasource.workspace = true
 chrono.workspace = true
 futures.workspace = true

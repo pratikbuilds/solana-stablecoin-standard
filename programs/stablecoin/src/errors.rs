@@ -56,4 +56,10 @@ pub enum StablecoinError {
     InvalidTransferHookProgram,
     #[msg("Math overflow")]
     Overflow,
+    #[msg("Invalid authority: cannot use system program or default pubkey")]
+    InvalidAuthority,
+    #[msg("Cannot blacklist the treasury (config authority)")]
+    CannotBlacklistTreasury,
+    #[msg("Invalid role: cannot use system program or default pubkey")]
+    InvalidRole,
 }

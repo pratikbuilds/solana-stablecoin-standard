@@ -6,8 +6,8 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-stablecoin = "2MKyZ3ugkGyfConZAsqm3hwRoY6c2k7zwZaX1XCSHsJH"
-transfer_hook = "6mjTtZjRFK8FWA24f2KNEfMVcAvpYLWcpMzLvKiVXyd2"
+stablecoin = "Gbq8ZoZ4fE2J8wywFDYgSREPWL5qhtaneAX9PwQuQyCC"
+transfer_hook = "6QNzPyTwg2MH778GL8idYiU3teFJiuQx6R5L7xdU17KC"
 
 [provider]
 cluster = "Localnet"

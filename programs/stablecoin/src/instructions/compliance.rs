@@ -135,6 +135,10 @@ pub fn add_to_blacklist_handler(ctx: Context<AddToBlacklist>, reason: String) ->
         !reason.is_empty() && reason.len() <= MAX_REASON_LEN,
         StablecoinError::InvalidUri
     );
+    require!(
+        ctx.accounts.wallet.key() != ctx.accounts.config.authority,
+        StablecoinError::CannotBlacklistTreasury
+    );
 
     let blacklist_entry = &mut ctx.accounts.blacklist_entry;
     blacklist_entry.mint = ctx.accounts.config.mint;

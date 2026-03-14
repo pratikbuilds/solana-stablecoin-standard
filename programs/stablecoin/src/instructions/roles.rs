@@ -138,15 +138,19 @@ pub fn update_roles_handler(ctx: Context<UpdateRoles>, params: UpdateRolesParams
 
     let role_config = &mut ctx.accounts.role_config;
     if let Some(pauser) = params.pauser {
+        require!(pauser != Pubkey::default(), StablecoinError::InvalidRole);
         role_config.pauser = pauser;
     }
     if let Some(burner) = params.burner {
+        require!(burner != Pubkey::default(), StablecoinError::InvalidRole);
         role_config.burner = burner;
     }
     if let Some(blacklister) = params.blacklister {
+        require!(blacklister != Pubkey::default(), StablecoinError::InvalidRole);
         role_config.blacklister = blacklister;
     }
     if let Some(seizer) = params.seizer {
+        require!(seizer != Pubkey::default(), StablecoinError::InvalidRole);
         role_config.seizer = seizer;
     }
 
@@ -167,6 +171,10 @@ pub fn transfer_authority_handler(
             .role_config
             .is_master(&ctx.accounts.authority.key()),
         StablecoinError::NotMasterAuthority
+    );
+    require!(
+        new_authority != Pubkey::default(),
+        StablecoinError::InvalidAuthority
     );
 
     let old_authority = ctx.accounts.config.authority;
