@@ -10,6 +10,8 @@ pub struct Cli {
     pub profile: Option<String>,
     #[arg(long, global = true, action = ArgAction::SetTrue)]
     pub json: bool,
+    #[arg(long, global = true)]
+    pub rpc_url: Option<String>,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -28,6 +30,10 @@ pub enum Command {
         command: BlacklistCommand,
     },
     Seize(SeizeArgs),
+    Roles {
+        #[command(subcommand)]
+        command: RolesCommand,
+    },
     Minters {
         #[command(subcommand)]
         command: MintersCommand,
@@ -44,6 +50,7 @@ pub enum Command {
 
 #[derive(Debug, Subcommand, Clone)]
 pub enum OperationCommand {
+    List(OperationListArgs),
     Get { id: String },
     Approve {
         id: String,
@@ -73,6 +80,8 @@ pub struct InitArgs {
     pub preset: Option<Preset>,
     #[arg(long)]
     pub config: Option<PathBuf>,
+    #[arg(long)]
+    pub custom: Option<PathBuf>,
     #[arg(long, action = ArgAction::SetTrue)]
     pub wizard: bool,
     #[arg(long)]
@@ -85,8 +94,6 @@ pub struct InitArgs {
     pub uri: Option<String>,
     #[arg(long)]
     pub authority_keypair: Option<String>,
-    #[arg(long)]
-    pub rpc_url: Option<String>,
     #[arg(long)]
     pub api_url: Option<String>,
     #[arg(long, action = ArgAction::SetTrue)]
@@ -173,6 +180,28 @@ pub struct SeizeArgs {
 }
 
 #[derive(Debug, Subcommand, Clone)]
+pub enum RolesCommand {
+    Get(ReadArgs),
+    Set(UpdateRolesArgs),
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct UpdateRolesArgs {
+    #[arg(long)]
+    pub pauser: Option<String>,
+    #[arg(long)]
+    pub burner: Option<String>,
+    #[arg(long)]
+    pub blacklister: Option<String>,
+    #[arg(long)]
+    pub seizer: Option<String>,
+    #[arg(long)]
+    pub mint: Option<String>,
+    #[arg(long, action = ArgAction::SetTrue)]
+    pub yes: bool,
+}
+
+#[derive(Debug, Subcommand, Clone)]
 pub enum MintersCommand {
     List(MinterListArgs),
     Add(MinterAddArgs),
@@ -248,6 +277,35 @@ pub struct AuditLogArgs {
     pub cursor: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum OperationStatus {
+    Requested,
+    Approved,
+    Signing,
+    Submitted,
+    Finalized,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum OperationType {
+    Mint,
+    Burn,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct OperationListArgs {
+    #[arg(long)]
+    pub mint: Option<String>,
+    #[arg(long)]
+    pub status: Option<OperationStatus>,
+    #[arg(long, value_name = "TYPE")]
+    pub type_: Option<OperationType>,
+    #[arg(long)]
+    pub limit: Option<u32>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,6 +335,19 @@ mod tests {
                 assert_eq!(args.symbol.as_deref(), Some("AUSD"));
                 assert_eq!(args.decimals, Some(6));
                 assert_eq!(args.uri.as_deref(), Some("https://example.com/ausd.json"));
+                assert!(args.custom.is_none());
+            }
+            _ => panic!("expected init command"),
+        }
+    }
+
+    #[test]
+    fn parses_init_with_custom_config_alias() {
+        let cli = Cli::parse_from(["sss-token", "init", "--custom", "config.toml"]);
+        match cli.command {
+            Command::Init(args) => {
+                assert_eq!(args.custom, Some(PathBuf::from("config.toml")));
+                assert!(args.config.is_none());
             }
             _ => panic!("expected init command"),
         }
@@ -324,5 +395,75 @@ mod tests {
             } => {}
             _ => panic!("expected minters list command"),
         }
+    }
+
+    #[test]
+    fn parses_roles_get_command() {
+        let cli = Cli::parse_from(["sss-token", "roles", "get"]);
+        match cli.command {
+            Command::Roles {
+                command: RolesCommand::Get(_),
+            } => {}
+            _ => panic!("expected roles get command"),
+        }
+    }
+
+    #[test]
+    fn parses_roles_set_command() {
+        let cli = Cli::parse_from([
+            "sss-token",
+            "roles",
+            "set",
+            "--burner",
+            "Wallet111",
+            "--pauser",
+            "Wallet222",
+        ]);
+        match cli.command {
+            Command::Roles {
+                command: RolesCommand::Set(args),
+            } => {
+                assert_eq!(args.burner.as_deref(), Some("Wallet111"));
+                assert_eq!(args.pauser.as_deref(), Some("Wallet222"));
+            }
+            _ => panic!("expected roles set command"),
+        }
+    }
+
+    #[test]
+    fn parses_operation_list_command() {
+        let cli = Cli::parse_from([
+            "sss-token",
+            "operation",
+            "list",
+            "--status",
+            "requested",
+            "--type",
+            "mint",
+            "--limit",
+            "5",
+        ]);
+        match cli.command {
+            Command::Operation {
+                command: OperationCommand::List(args),
+            } => {
+                assert!(matches!(args.status, Some(OperationStatus::Requested)));
+                assert!(matches!(args.type_, Some(OperationType::Mint)));
+                assert_eq!(args.limit, Some(5));
+            }
+            _ => panic!("expected operation list command"),
+        }
+    }
+
+    #[test]
+    fn parses_global_rpc_url() {
+        let cli = Cli::parse_from([
+            "sss-token",
+            "--rpc-url",
+            "https://example-rpc.test",
+            "status",
+        ]);
+        assert_eq!(cli.rpc_url.as_deref(), Some("https://example-rpc.test"));
+        assert!(matches!(cli.command, Command::Status(_)));
     }
 }

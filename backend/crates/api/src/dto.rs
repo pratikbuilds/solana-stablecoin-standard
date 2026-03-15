@@ -24,6 +24,12 @@ pub struct LifecycleDetailsResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct LifecycleListResponse {
+    pub requests: Vec<LifecycleRequest>,
+    pub total: i64,
+}
+
+#[derive(Debug, Serialize)]
 pub struct EventsResponse {
     pub events: Vec<EventRecord>,
     pub total: i64,

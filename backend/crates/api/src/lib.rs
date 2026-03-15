@@ -9,7 +9,7 @@ mod workers;
 pub use config::{ApiConfig, AppState};
 pub use dto::{
     ApproveLifecycleBody, CreateLifecycleBody, CreateWebhookSubscriptionBody,
-    LifecycleDetailsResponse,
+    LifecycleDetailsResponse, LifecycleListResponse,
 };
 pub use error::ApiError;
 pub use routes::{build_router, run};

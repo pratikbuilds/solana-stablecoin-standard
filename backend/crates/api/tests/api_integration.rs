@@ -313,6 +313,17 @@ async fn api_routes_cover_core_paths() -> Result<()> {
         .clone()
         .oneshot(
             Request::builder()
+                .uri("/v1/operations?status=approved&type=mint&limit=10")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
                 .method("POST")
                 .uri(format!("/v1/operations/{}/execute", request_id))
                 .body(Body::empty())

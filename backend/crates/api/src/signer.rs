@@ -23,8 +23,6 @@ const SEED_MINTER: &[u8] = b"minter";
 const SEED_ROLES: &[u8] = b"roles";
 const SEED_EVENT_AUTHORITY: &[u8] = b"__event_authority";
 
-/// Legacy SPL Token program (use when mint was created with it).
-const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 /// Token-2022 (extensions); devnet presets and SSS-1/SSS-2 use this. Override with SSS_TOKEN_PROGRAM_ID if needed.
 const TOKEN_2022_PROGRAM_ID: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
 const SPL_ASSOCIATED_TOKEN_PROGRAM_ID: &str = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
@@ -80,7 +78,10 @@ fn event_authority_pda(program_id: &Pubkey) -> Pubkey {
 }
 
 fn associated_token_address(wallet: &Pubkey, mint: &Pubkey) -> Pubkey {
-    let token_program_id = Pubkey::from_str(SPL_TOKEN_PROGRAM_ID).expect("token program id");
+    let token_program_id = std::env::var("SSS_TOKEN_PROGRAM_ID")
+        .ok()
+        .and_then(|value| Pubkey::from_str(&value).ok())
+        .unwrap_or_else(|| Pubkey::from_str(TOKEN_2022_PROGRAM_ID).expect("token program id"));
     let ata_program_id = Pubkey::from_str(SPL_ASSOCIATED_TOKEN_PROGRAM_ID).expect("ata program id");
     let (pda, _) = Pubkey::find_program_address(
         &[

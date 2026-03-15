@@ -282,6 +282,56 @@ impl Store {
         rows.into_iter().map(row_to_lifecycle_request).collect()
     }
 
+    pub async fn list_lifecycle_requests(
+        &self,
+        mint: Option<&str>,
+        status: Option<LifecycleStatus>,
+        type_: Option<LifecycleRequestType>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<(Vec<LifecycleRequest>, i64)> {
+        let limit = limit.clamp(1, 500);
+        let status = status.map(LifecycleStatus::as_str);
+        let type_ = type_.map(LifecycleRequestType::as_str);
+
+        let total: i64 = sqlx::query_scalar::<_, i64>(
+            r#"
+            select count(*)::bigint
+            from lifecycle_requests
+            where ($1::text is null or mint = $1)
+              and ($2::text is null or status = $2)
+              and ($3::text is null or type = $3)
+            "#,
+        )
+        .bind(mint)
+        .bind(status)
+        .bind(type_)
+        .fetch_one(&self.pool)
+        .await?;
+
+        let rows = sqlx::query(
+            r#"
+            select id, type, status, mint, recipient, token_account, amount::text as amount, minter, reason, idempotency_key, requested_by, approved_by, tx_signature, error, created_at, updated_at
+            from lifecycle_requests
+            where ($1::text is null or mint = $1)
+              and ($2::text is null or status = $2)
+              and ($3::text is null or type = $3)
+            order by created_at desc, id desc
+            limit $4 offset $5
+            "#,
+        )
+        .bind(mint)
+        .bind(status)
+        .bind(type_)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let requests = rows.into_iter().map(row_to_lifecycle_request).collect::<Result<Vec<_>>>()?;
+        Ok((requests, total))
+    }
+
     pub async fn create_webhook_subscription(
         &self,
         sub: &CreateWebhookSubscription,

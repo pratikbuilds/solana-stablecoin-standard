@@ -29,7 +29,7 @@ use crate::{
     config::{ApiConfig, AppState},
     dto::{
         ApproveLifecycleBody, CreateLifecycleBody, CreateWebhookSubscriptionBody,
-        LifecycleDetailsResponse,
+        LifecycleDetailsResponse, LifecycleListResponse,
     },
     error::ApiError,
     workers::spawn_default_workers,
@@ -101,12 +101,25 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/mints/{mint}/events", get(list_mint_events))
         .route("/v1/mint-requests", post(create_mint_request))
         .route("/v1/burn-requests", post(create_burn_request))
+        .route("/v1/operations", get(list_operations))
         .route("/v1/operations/{id}", get(get_operation))
         .route("/v1/operations/{id}/approve", post(approve_operation))
         .route("/v1/operations/{id}/execute", post(execute_operation))
         .route("/v1/webhooks/subscriptions", post(create_webhook_subscription))
         .layer(ServiceBuilder::new())
         .with_state(state)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OperationsQuery {
+    pub mint: Option<String>,
+    pub status: Option<LifecycleStatus>,
+    #[serde(rename = "type")]
+    pub type_: Option<LifecycleRequestType>,
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
 }
 
 pub async fn run(config: ApiConfig) -> Result<()> {
@@ -212,6 +225,25 @@ async fn get_operation(
         return Err(ApiError::not_found("operation not found"));
     };
     Ok(Json(LifecycleDetailsResponse { request }))
+}
+
+async fn list_operations(
+    Query(query): Query<OperationsQuery>,
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, ApiError> {
+    let limit = query.limit.clamp(1, 500);
+    let (requests, total) = state
+        .store
+        .list_lifecycle_requests(
+            query.mint.as_deref(),
+            query.status,
+            query.type_,
+            limit,
+            query.offset,
+        )
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(LifecycleListResponse { requests, total }))
 }
 
 async fn approve_operation(

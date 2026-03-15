@@ -77,26 +77,30 @@ impl InitPlan {
     }
 }
 
-pub fn prepare_init(args: &InitArgs) -> Result<InitPlan> {
+pub fn prepare_init(args: &InitArgs, rpc_override: Option<&str>) -> Result<InitPlan> {
+    let config_path = args.config.clone().or_else(|| args.custom.clone());
+
     if args.wizard {
-        if args.config.is_some() || args.preset.is_some() {
-            bail!("init wizard cannot be combined with --config or --preset");
+        if config_path.is_some() || args.preset.is_some() {
+            bail!("init wizard cannot be combined with --config/--custom or --preset");
         }
-        return build_inline_config(args, InitSource::Wizard);
+        return build_inline_config(args, InitSource::Wizard, rpc_override);
     }
 
-    if let Some(path) = &args.config {
+    if let Some(path) = &config_path {
         if path.exists() {
             if args.preset.is_some() || args.name.is_some() || args.symbol.is_some() || args.decimals.is_some() || args.uri.is_some() {
                 bail!("existing init config cannot be combined with inline preset or metadata flags");
             }
+            let mut config = load_init_config(path)?;
+            apply_runtime_overrides(&mut config, args, rpc_override);
             return Ok(InitPlan {
-                config: load_init_config(path)?,
+                config,
                 source: InitSource::ExistingConfig { path: path.clone() },
             });
         }
 
-        let plan = build_inline_config(args, InitSource::MissingConfig { path: path.clone() })?;
+        let plan = build_inline_config(args, InitSource::MissingConfig { path: path.clone() }, rpc_override)?;
         plan.config.validate()?;
         return Ok(plan);
     }
@@ -105,10 +109,10 @@ pub fn prepare_init(args: &InitArgs) -> Result<InitPlan> {
         bail!("init requires --preset when no config file is provided");
     }
 
-    build_inline_config(args, InitSource::Preset)
+    build_inline_config(args, InitSource::Preset, rpc_override)
 }
 
-fn build_inline_config(args: &InitArgs, source: InitSource) -> Result<InitPlan> {
+fn build_inline_config(args: &InitArgs, source: InitSource, rpc_override: Option<&str>) -> Result<InitPlan> {
     let preset = args
         .preset
         .or(match source {
@@ -116,29 +120,56 @@ fn build_inline_config(args: &InitArgs, source: InitSource) -> Result<InitPlan> 
             _ => None,
         })
         .context("init preset is required for inline initialization")?;
-    let name = args
-        .name
-        .clone()
-        .context("init name is required when config file is missing")?;
+    let defaults = default_metadata_for_preset(preset);
+    let name = args.name.clone().unwrap_or_else(|| defaults.name.to_string());
     let symbol = args
         .symbol
         .clone()
-        .context("init symbol is required when config file is missing")?;
-    let decimals = args
-        .decimals
-        .context("init decimals are required when config file is missing")?;
-    let uri = args
-        .uri
-        .clone()
-        .context("init uri is required when config file is missing")?;
+        .unwrap_or_else(|| defaults.symbol.to_string());
+    let decimals = args.decimals.unwrap_or(defaults.decimals);
+    let uri = args.uri.clone().unwrap_or_else(|| defaults.uri.to_string());
 
     let config = InitConfigFile::from_preset(preset, name, symbol, decimals, uri);
     let mut config = config;
-    config.authority_keypair = args.authority_keypair.clone();
-    config.rpc_url = args.rpc_url.clone();
-    config.api_url = args.api_url.clone();
+    apply_runtime_overrides(&mut config, args, rpc_override);
     config.validate()?;
     Ok(InitPlan { config, source })
+}
+
+fn apply_runtime_overrides(config: &mut InitConfigFile, args: &InitArgs, rpc_override: Option<&str>) {
+    if let Some(authority_keypair) = &args.authority_keypair {
+        config.authority_keypair = Some(authority_keypair.clone());
+    }
+    if let Some(rpc_url) = rpc_override {
+        config.rpc_url = Some(rpc_url.to_string());
+    }
+    if let Some(api_url) = &args.api_url {
+        config.api_url = Some(api_url.clone());
+    }
+}
+
+struct PresetMetadataDefaults {
+    name: &'static str,
+    symbol: &'static str,
+    decimals: u8,
+    uri: &'static str,
+}
+
+fn default_metadata_for_preset(preset: Preset) -> PresetMetadataDefaults {
+    match preset {
+        Preset::Sss1 => PresetMetadataDefaults {
+            name: "Simple USD",
+            symbol: "SUSD",
+            decimals: 6,
+            uri: "https://example.com/sss1.json",
+        },
+        Preset::Sss2 => PresetMetadataDefaults {
+            name: "Regulated USD",
+            symbol: "RUSD",
+            decimals: 6,
+            uri: "https://example.com/sss2.json",
+        },
+    }
 }
 
 #[cfg(test)]
@@ -151,13 +182,13 @@ mod tests {
         InitArgs {
             preset: Some(Preset::Sss2),
             config: None,
+            custom: None,
             wizard: false,
             name: Some("Acme USD".into()),
             symbol: Some("AUSD".into()),
             decimals: Some(6),
             uri: Some("https://example.com/ausd.json".into()),
             authority_keypair: Some("/tmp/id.json".into()),
-            rpc_url: Some("https://api.devnet.solana.com".into()),
             api_url: Some("http://127.0.0.1:8080".into()),
             dry_run: false,
             yes: false,
@@ -166,16 +197,42 @@ mod tests {
 
     #[test]
     fn builds_init_plan_from_preset_args() {
-        let plan = prepare_init(&inline_args()).unwrap();
+        let plan = prepare_init(&inline_args(), Some("https://api.devnet.solana.com")).unwrap();
         assert_eq!(plan.config.preset, Preset::Sss2);
         assert_eq!(plan.config.uri, "https://example.com/ausd.json");
+        assert_eq!(plan.config.rpc_url.as_deref(), Some("https://api.devnet.solana.com"));
     }
 
     #[test]
-    fn missing_inline_uri_is_rejected() {
+    fn missing_inline_uri_uses_preset_default() {
         let mut args = inline_args();
         args.uri = None;
-        assert!(prepare_init(&args).is_err());
+        let plan = prepare_init(&args, Some("https://api.devnet.solana.com")).unwrap();
+        assert_eq!(plan.config.uri, "https://example.com/sss2.json");
+    }
+
+    #[test]
+    fn preset_only_init_uses_defaults() {
+        let args = InitArgs {
+            preset: Some(Preset::Sss1),
+            config: None,
+            custom: None,
+            wizard: false,
+            name: None,
+            symbol: None,
+            decimals: None,
+            uri: None,
+            authority_keypair: None,
+            api_url: None,
+            dry_run: false,
+            yes: false,
+        };
+
+        let plan = prepare_init(&args, None).unwrap();
+        assert_eq!(plan.config.name, "Simple USD");
+        assert_eq!(plan.config.symbol, "SUSD");
+        assert_eq!(plan.config.decimals, 6);
+        assert_eq!(plan.config.uri, "https://example.com/sss1.json");
     }
 
     #[test]
@@ -186,7 +243,7 @@ mod tests {
         args.config = Some(path.clone());
         args.preset = Some(Preset::Sss1);
 
-        let plan = prepare_init(&args).unwrap();
+        let plan = prepare_init(&args, Some("https://api.devnet.solana.com")).unwrap();
         assert!(!path.exists());
 
         plan.maybe_persist_config().unwrap();
@@ -204,11 +261,52 @@ mod tests {
         let mut args = inline_args();
         args.config = Some(path.clone());
 
-        let mut plan = prepare_init(&args).unwrap();
+        let mut plan = prepare_init(&args, None).unwrap();
         plan.persist_with_mint("Mint111111111111111111111111111111111111111")
             .unwrap();
 
         let written = std::fs::read_to_string(path).unwrap();
         assert!(written.contains("mint = \"Mint111111111111111111111111111111111111111\""));
+    }
+
+    #[test]
+    fn existing_config_accepts_global_rpc_override() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+name = "Acme USD"
+symbol = "AUSD"
+decimals = 6
+uri = "https://example.com/ausd.json"
+preset = "sss-2"
+rpc_url = "https://old-rpc.test"
+
+[features]
+enable_permanent_delegate = true
+enable_transfer_hook = true
+default_account_frozen = true
+"#,
+        )
+        .unwrap();
+
+        let args = InitArgs {
+            preset: None,
+            config: Some(path),
+            custom: None,
+            wizard: false,
+            name: None,
+            symbol: None,
+            decimals: None,
+            uri: None,
+            authority_keypair: None,
+            api_url: None,
+            dry_run: false,
+            yes: false,
+        };
+
+        let plan = prepare_init(&args, Some("https://override-rpc.test")).unwrap();
+        assert_eq!(plan.config.rpc_url.as_deref(), Some("https://override-rpc.test"));
     }
 }

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use reqwest::blocking::Client;
 use serde::Serialize;
-use sss_domain::{EventRecord, LifecycleRequest};
+use sss_domain::{EventRecord, LifecycleRequest, LifecycleRequestType, LifecycleStatus};
 use uuid::Uuid;
 
 use crate::config::InitConfigFile;
@@ -26,6 +26,12 @@ struct CreateLifecycleBody {
 #[derive(Debug, serde::Deserialize)]
 struct EventsResponse {
     events: Vec<EventRecord>,
+    total: i64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct OperationsResponse {
+    requests: Vec<LifecycleRequest>,
     total: i64,
 }
 
@@ -134,6 +140,44 @@ impl BackendClient {
                 requested_by: requested_by(),
             },
         )
+    }
+
+    pub fn list_operations(
+        &self,
+        mint: Option<String>,
+        status: Option<LifecycleStatus>,
+        type_: Option<LifecycleRequestType>,
+        limit: Option<u32>,
+    ) -> Result<Vec<LifecycleRequest>> {
+        let mut url = format!("{}/v1/operations", self.base_url);
+        let mut params: Vec<String> = Vec::new();
+        if let Some(mint) = mint {
+            params.push(format!("mint={}", urlencoding::encode(&mint)));
+        }
+        if let Some(status) = status {
+            params.push(format!("status={}", status.as_str()));
+        }
+        if let Some(type_) = type_ {
+            params.push(format!("type={}", type_.as_str()));
+        }
+        if let Some(limit) = limit {
+            params.push(format!("limit={limit}"));
+        }
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        let resp: OperationsResponse = self
+            .http
+            .get(&url)
+            .send()
+            .context("request operations list")?
+            .error_for_status()
+            .context("operations list request failed")?
+            .json()
+            .context("decode operations list response")?;
+        Ok(resp.requests)
     }
 
     fn create_lifecycle_request(&self, path: &str, body: CreateLifecycleBody) -> Result<LifecycleRequest> {
